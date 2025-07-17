@@ -1,79 +1,123 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
   Platform,
   Alert,
-  ActivityIndicator,
   TextInput,
   Modal,
   RefreshControl,
   FlatList,
   Image,
+  ActivityIndicator,
+  Dimensions,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useRouter } from 'expo-router';
+import LoadingComponent from '../../src/components/LoadingComponent';
+import ErrorComponent from '../../src/components/ErrorComponent';
+import EmptyState from '../../src/components/EmptyState';
+import { 
+  useAdminService, 
+  AdminServiceError, 
+  formatPrice, 
+  formatDate,
+  formatDateShort,
+  getDiscountStatusColor,
+  getDiscountStatusText,
+  calculateDiscountAmount,
+  getProductName,
+  getCategoryName
+} from '../../src/services/admin.service';
+import type { Discount, Product, Category } from '../../src/services/admin.service';
 
+const { width } = Dimensions.get('window');
 const PRIMARY = '#23B6C7';
 const PINK = '#E94B7B';
 const BG = '#E6F3F7';
-// استخدام متغيرات البيئة للـ API
-const API_BASE = process.env.EXPO_PUBLIC_API_ADMIN_URL || 'http://172.19.112.1:5000/api/admin';
+const SUCCESS = '#4CAF50';
+const WARNING = '#FF9800';
+const ERROR = '#F44336';
 
-// نوع الخصم من الباك إند
-type Discount = {
-  _id: string;
-  title: string;
+type FormData = {
+  name: string;
   description: string;
-  discountPercentage: number;
-  originalPrice: number;
-  discountPrice: number;
-  productId: string;
-  product: {
-    _id: string;
-    name: string;
-    price: number;
-    image: string;
-  };
-  validUntil: string | undefined; // تحديث النوع ليتطابق مع الواقع
+  discountType: 'percentage' | 'fixed';
+  discountValue: string;
+  minAmount: string;
+  maxDiscount: string;
+  startDate: string;
+  endDate: string;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  applicableProducts: string[];
+  applicableCategories: string[];
 };
 
-type Product = {
-  _id: string;
-  name: string;
-  price: number;
-  image: string;
-  category: string;
+type FilterOptions = {
+  status: 'all' | 'active' | 'inactive' | 'expired' | 'upcoming';
+  type: 'all' | 'percentage' | 'fixed';
 };
 
 export default function AdminDiscountsScreen() {
   const { user, token } = useAuth();
   const router = useRouter();
+  
+  // Initialize admin service
+  const adminService = React.useMemo(() => {
+    if (!token) return null;
+    try {
+      return useAdminService(token);
+    } catch (error) {
+      console.error('Failed to initialize admin service:', error);
+      return null;
+    }
+  }, [token]);
+
+  // State management
   const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [filteredDiscounts, setFilteredDiscounts] = useState<Discount[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<FilterOptions>({
+    status: 'all',
+    type: 'all',
+  });
+  const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [editingDiscount, setEditingDiscount] = useState<Discount | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // حالة النموذج
-  const [formData, setFormData] = useState({
-    title: '',
+  // Form state
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
     description: '',
-    discountPercentage: '',
-    productId: '',
-    validUntil: '' as string,
+    discountType: 'percentage',
+    discountValue: '',
+    minAmount: '',
+    maxDiscount: '',
+    startDate: '',
+    endDate: '',
+    isActive: true,
+    applicableProducts: [],
+    applicableCategories: [],
   });
 
+  const [formErrors, setFormErrors] = useState<Partial<FormData>>({});
+
+  // Effects
   useEffect(() => {
     if (!user || user.role !== 'admin') {
       Alert.alert('غير مصرح', 'هذه الصفحة للمسؤولين فقط');
@@ -83,76 +127,227 @@ export default function AdminDiscountsScreen() {
     loadData();
   }, [user]);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  useEffect(() => {
+    filterDiscounts();
+  }, [searchQuery, filters, discounts]);
+
+  // Data loading
+  const loadData = useCallback(async () => {
+    if (!adminService) {
+      setError('لا يمكن الوصول إلى الخدمة');
+      return;
+    }
+
     try {
-      // تحميل الخصومات
-      const discountsResponse = await fetch(`${API_BASE}/discounts`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      setIsLoading(true);
+      setError(null);
 
-      // تحميل المنتجات
-      const productsResponse = await fetch(`${API_BASE}/products`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const [discountsData, productsData, categoriesData] = await Promise.all([
+        adminService.getDiscounts(),
+        adminService.getProducts(),
+        adminService.getCategories(),
+      ]);
 
-      if (discountsResponse.ok && productsResponse.ok) {
-        const discountsData = await discountsResponse.json();
-        const productsData = await productsResponse.json();
-        setDiscounts(discountsData.discounts || []);
-        setProducts(productsData.products || []);
-      } else {
-        console.error('فشل في تحميل البيانات:', discountsResponse.status, productsResponse.status);
-        Alert.alert('خطأ', 'فشل في تحميل البيانات من الخادم');
-      }
+      console.log('Discounts loaded:', discountsData.length);
+      console.log('Products loaded:', productsData.length);
+      console.log('Categories loaded:', categoriesData.length);
+
+      setDiscounts(discountsData);
+      setProducts(productsData);
+      setCategories(categoriesData);
     } catch (error) {
-      console.error('خطأ في تحميل البيانات:', error);
-      Alert.alert('خطأ', 'فشل في الاتصال بالخادم');
+      console.error('Error loading data:', error);
+      let errorMessage = 'فشل في تحميل البيانات';
+      
+      if (error instanceof AdminServiceError) {
+        errorMessage = error.message;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
+      Alert.alert('خطأ', errorMessage);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [adminService]);
 
-  const onRefresh = async () => {
+  // Filter discounts
+  const filterDiscounts = useCallback(() => {
+    if (!Array.isArray(discounts)) {
+      setFilteredDiscounts([]);
+      return;
+    }
+
+    let filtered = [...discounts];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(discount => {
+        const nameMatch = discount.name?.toLowerCase().includes(query);
+        const descriptionMatch = discount.description?.toLowerCase().includes(query);
+        const codeMatch = discount.code?.toLowerCase().includes(query);
+        
+        // Search in applicable products
+        const productMatch = discount.applicableProducts?.some(product => {
+          const productName = typeof product === 'string' 
+            ? products.find(p => p._id === product)?.name 
+            : product.name;
+          return productName?.toLowerCase().includes(query);
+        });
+
+        // Search in applicable categories
+        const categoryMatch = discount.applicableCategories?.some(category => {
+          const categoryName = typeof category === 'string' 
+            ? categories.find(c => c._id === category)?.name 
+            : category.name;
+          return categoryName?.toLowerCase().includes(query);
+        });
+
+        return nameMatch || descriptionMatch || codeMatch || productMatch || categoryMatch;
+      });
+    }
+
+    // Status filter
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(discount => {
+        const status = getDiscountStatusText(discount);
+        switch (filters.status) {
+          case 'active':
+            return status === 'نشط';
+          case 'inactive':
+            return status === 'غير نشط';
+          case 'expired':
+            return status === 'منتهي الصلاحية';
+          case 'upcoming':
+            return status === 'قادم';
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Type filter
+    if (filters.type !== 'all') {
+      filtered = filtered.filter(discount => discount.discountType === filters.type);
+    }
+
+    // Sort by creation date (newest first)
+    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    setFilteredDiscounts(filtered);
+  }, [discounts, searchQuery, filters, products, categories]);
+
+  // Refresh handler
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  }, [loadData]);
+
+  // Form validation
+  const validateForm = (): boolean => {
+    if (!adminService) return false;
+    
+    const validation = adminService.validateDiscountData({
+      name: formData.name,
+      discountType: formData.discountType,
+      discountValue: formData.discountValue,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      minAmount: formData.minAmount || '0',
+      maxDiscount: formData.maxDiscount || '0',
+    });
+
+    if (!validation.isValid) {
+      const errors: Partial<FormData> = {};
+      validation.errors.forEach(error => {
+        if (error.includes('اسم الخصم')) errors.name = error;
+        if (error.includes('نوع الخصم')) errors.discountType = error;
+        if (error.includes('قيمة الخصم')) errors.discountValue = error;
+        if (error.includes('تاريخ البداية')) errors.startDate = error;
+        if (error.includes('تاريخ النهاية')) errors.endDate = error;
+        if (error.includes('الحد الأدنى')) errors.minAmount = error;
+        if (error.includes('الحد الأقصى')) errors.maxDiscount = error;
+      });
+      setFormErrors(errors);
+      return false;
+    }
+
+    setFormErrors({});
+    return true;
   };
 
+  // Modal handlers
   const handleAddDiscount = () => {
     setEditingDiscount(null);
     setFormData({
-      title: '',
+      name: '',
       description: '',
-      discountPercentage: '',
-      productId: '',
-      validUntil: '',
+      discountType: 'percentage',
+      discountValue: '',
+      minAmount: '',
+      maxDiscount: '',
+      startDate: '',
+      endDate: '',
+      isActive: true,
+      applicableProducts: [],
+      applicableCategories: [],
     });
+    setFormErrors({});
     setShowAddModal(true);
   };
 
   const handleEditDiscount = (discount: Discount) => {
     setEditingDiscount(discount);
     setFormData({
-      title: discount.title,
-      description: discount.description,
-      discountPercentage: discount.discountPercentage.toString(),
-      productId: discount.productId,
-      validUntil: (discount.validUntil ? discount.validUntil.split('T')[0] : '') as string, // تحويل التاريخ إلى YYYY-MM-DD
+      name: discount.name,
+      description: discount.description || '',
+      discountType: discount.discountType,
+      discountValue: discount.discountValue.toString(),
+      minAmount: discount.minAmount?.toString() || '',
+      maxDiscount: discount.maxDiscount?.toString() || '',
+      startDate: discount.startDate.split('T')[0],
+      endDate: discount.endDate.split('T')[0],
+      isActive: discount.isActive,
+      applicableProducts: Array.isArray(discount.applicableProducts) 
+        ? discount.applicableProducts.map(p => typeof p === 'string' ? p : p._id)
+        : [],
+      applicableCategories: Array.isArray(discount.applicableCategories)
+        ? discount.applicableCategories.map(c => typeof c === 'string' ? c : c._id)
+        : [],
     });
+    setFormErrors({});
     setShowAddModal(true);
   };
 
+  const handleViewDetails = (discount: Discount) => {
+    setSelectedDiscount(discount);
+    setShowDetailsModal(true);
+  };
+
+  const closeModal = () => {
+    setShowAddModal(false);
+    setEditingDiscount(null);
+    setFormErrors({});
+  };
+
+  const closeDetailsModal = () => {
+    setShowDetailsModal(false);
+    setSelectedDiscount(null);
+  };
+
+  // CRUD operations
   const handleDeleteDiscount = async (discount: Discount) => {
+    if (!adminService) {
+      Alert.alert('خطأ', 'لا يمكن الوصول إلى الخدمة');
+      return;
+    }
+
     Alert.alert(
       'حذف الخصم',
-      `هل أنت متأكد من حذف "${discount.title}"؟`,
+      `هل أنت متأكد من حذف "${discount.name}"؟\nهذا الإجراء لا يمكن التراجع عنه.`,
       [
         { text: 'إلغاء', style: 'cancel' },
         {
@@ -160,23 +355,17 @@ export default function AdminDiscountsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_BASE}/discounts/${discount._id}`, {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                },
-              });
-
-              if (response.ok) {
-                Alert.alert('تم الحذف', 'تم حذف الخصم بنجاح');
-                loadData();
-              } else {
-                Alert.alert('خطأ', 'فشل في حذف الخصم');
-              }
+              await adminService.deleteDiscount(discount._id);
+              Alert.alert('تم الحذف', 'تم حذف الخصم بنجاح');
+              await loadData();
             } catch (error) {
-              console.error('خطأ في حذف الخصم:', error);
-              Alert.alert('خطأ', 'فشل في حذف الخصم');
+              let errorMessage = 'فشل في حذف الخصم';
+              if (error instanceof AdminServiceError) {
+                errorMessage = error.message;
+              } else if (error instanceof Error) {
+                errorMessage = error.message;
+              }
+              Alert.alert('خطأ', errorMessage);
             }
           },
         },
@@ -185,212 +374,350 @@ export default function AdminDiscountsScreen() {
   };
 
   const handleSaveDiscount = async () => {
-    if (!formData.title || !formData.description || !formData.discountPercentage || !formData.productId || !formData.validUntil) {
-      Alert.alert('خطأ', 'يرجى ملء جميع الحقول المطلوبة');
+    if (!adminService) {
+      Alert.alert('خطأ', 'لا يمكن الوصول إلى الخدمة');
       return;
     }
 
-    const selectedProduct = products.find(p => p._id === formData.productId);
-    if (!selectedProduct) {
-      Alert.alert('خطأ', 'المنتج المحدد غير موجود');
+    if (!validateForm()) {
+      Alert.alert('خطأ في البيانات', 'يرجى تصحيح الأخطاء المحددة');
       return;
     }
 
-    const discountPercentage = parseFloat(formData.discountPercentage);
-    if (discountPercentage <= 0 || discountPercentage >= 100) {
-      Alert.alert('خطأ', 'نسبة الخصم يجب أن تكون بين 1 و 99');
+    setIsSubmitting(true);
+    try {
+      const discountData = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        discountType: formData.discountType,
+        discountValue: parseFloat(formData.discountValue),
+        minAmount: formData.minAmount ? parseFloat(formData.minAmount) : undefined,
+        maxDiscount: formData.maxDiscount ? parseFloat(formData.maxDiscount) : undefined,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        isActive: formData.isActive,
+        applicableProducts: formData.applicableProducts.length > 0 ? formData.applicableProducts : undefined,
+        applicableCategories: formData.applicableCategories.length > 0 ? formData.applicableCategories : undefined,
+      };
+
+      if (editingDiscount) {
+        await adminService.updateDiscount(editingDiscount._id, discountData);
+        Alert.alert('تم التحديث', 'تم تحديث الخصم بنجاح');
+      } else {
+        await adminService.createDiscount(discountData);
+        Alert.alert('تم الإنشاء', 'تم إضافة الخصم بنجاح');
+      }
+
+      closeModal();
+      await loadData();
+    } catch (error) {
+      let errorMessage = 'فشل في حفظ الخصم';
+      if (error instanceof AdminServiceError) {
+        errorMessage = error.message;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      Alert.alert('خطأ', errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleDiscountStatus = async (discount: Discount) => {
+    if (!adminService) {
+      Alert.alert('خطأ', 'لا يمكن الوصول إلى الخدمة');
       return;
     }
 
     try {
-      const discountData = {
-        title: formData.title,
-        description: formData.description,
-        discountPercentage,
-        productId: formData.productId,
-        validUntil: formData.validUntil,
-      };
-
-      const url = editingDiscount 
-        ? `${API_BASE}/discounts/${editingDiscount._id}`
-        : `${API_BASE}/discounts`;
-      
-      const method = editingDiscount ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(discountData),
-      });
-
-      if (response.ok) {
-        Alert.alert(
-          'تم الحفظ',
-          editingDiscount ? 'تم تحديث الخصم بنجاح' : 'تم إضافة الخصم بنجاح'
-        );
-        setShowAddModal(false);
-        loadData();
-      } else {
-        Alert.alert('خطأ', 'فشل في حفظ الخصم');
-      }
+      await adminService.toggleDiscountStatus(discount._id, !discount.isActive);
+      await loadData();
     } catch (error) {
-      console.error('خطأ في حفظ الخصم:', error);
-      Alert.alert('خطأ', 'فشل في حفظ الخصم');
+      let errorMessage = 'فشل في تحديث حالة الخصم';
+      if (error instanceof AdminServiceError) {
+        errorMessage = error.message;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      Alert.alert('خطأ', errorMessage);
     }
   };
 
-  const filteredDiscounts = discounts.filter(discount => {
-    const matchesSearch = (discount.title?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-                         (discount.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-                         (discount.product?.name?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  // Helper functions
+  const getApplicableProductsText = (discount: Discount): string => {
+    if (!discount.applicableProducts || discount.applicableProducts.length === 0) {
+      return 'جميع المنتجات';
+    }
+    
+    const productNames = discount.applicableProducts.map(product => {
+      if (typeof product === 'string') {
+        const foundProduct = products.find(p => p._id === product);
+        return foundProduct?.name || 'منتج محذوف';
+      }
+      return product.name;
+    });
 
-  const renderDiscount = ({ item }: { item: Discount }) => (
-    <View style={styles.discountCard}>
-      <View style={styles.discountHeader}>
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountPercentage}>{item.discountPercentage}%</Text>
-          <Text style={styles.discountLabel}>خصم</Text>
+    if (productNames.length <= 2) {
+      return productNames.join('، ');
+    }
+    return `${productNames.slice(0, 2).join('، ')} +${productNames.length - 2} أخرى`;
+  };
+
+  const getApplicableCategoriesText = (discount: Discount): string => {
+    if (!discount.applicableCategories || discount.applicableCategories.length === 0) {
+      return 'جميع الفئات';
+    }
+    
+    const categoryNames = discount.applicableCategories.map(category => {
+      if (typeof category === 'string') {
+        const foundCategory = categories.find(c => c._id === category);
+        return foundCategory?.name || 'فئة محذوفة';
+      }
+      return category.name;
+    });
+
+    if (categoryNames.length <= 2) {
+      return categoryNames.join('، ');
+    }
+    return `${categoryNames.slice(0, 2).join('، ')} +${categoryNames.length - 2} أخرى`;
+  };
+
+  // Get statistics
+  const getDiscountStats = () => {
+    const total = filteredDiscounts.length;
+    const active = filteredDiscounts.filter(d => getDiscountStatusText(d) === 'نشط').length;
+    const expired = filteredDiscounts.filter(d => getDiscountStatusText(d) === 'منتهي الصلاحية').length;
+    const upcoming = filteredDiscounts.filter(d => getDiscountStatusText(d) === 'قادم').length;
+    const percentage = filteredDiscounts.filter(d => d.discountType === 'percentage').length;
+    const fixed = filteredDiscounts.filter(d => d.discountType === 'fixed').length;
+
+    return { total, active, expired, upcoming, percentage, fixed };
+  };
+
+  // Render components
+  const renderDiscountCard = ({ item }: { item: Discount }) => {
+    const statusColor = getDiscountStatusColor(item);
+    const statusText = getDiscountStatusText(item);
+
+    return (
+      <View style={[styles.discountCard, !item.isActive && styles.inactiveCard]}>
+        {/* Discount Header */}
+        <View style={styles.discountHeader}>
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountValue}>
+              {item.discountType === 'percentage' ? `${item.discountValue}%` : formatPrice(item.discountValue)}
+            </Text>
+            <Text style={styles.discountType}>
+              {item.discountType === 'percentage' ? 'خصم نسبي' : 'خصم ثابت'}
+            </Text>
+          </View>
+          <View style={styles.discountActions}>
+            <Switch
+              value={item.isActive}
+              onValueChange={() => toggleDiscountStatus(item)}
+              trackColor={{ false: '#767577', true: PRIMARY }}
+              thumbColor={item.isActive ? 'white' : '#f4f3f4'}
+            />
+          </View>
         </View>
-        <View style={styles.discountActions}>
+
+        {/* Discount Info */}
+        <View style={styles.discountInfo}>
+          <Text style={[styles.discountName, !item.isActive && styles.inactiveText]} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.discountDescription} numberOfLines={2}>
+            {item.description || 'لا يوجد وصف'}
+          </Text>
+          {item.code && (
+            <View style={styles.codeContainer}>
+              <Ionicons name="pricetag" size={14} color={PRIMARY} />
+              <Text style={styles.discountCode}>{item.code}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Status and Validity */}
+        <View style={styles.statusSection}>
+          <View style={[styles.statusIndicator, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>{statusText}</Text>
+          </View>
+          <View style={styles.dateInfo}>
+            <Text style={styles.dateText}>
+              من {formatDateShort(item.startDate)} إلى {formatDateShort(item.endDate)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Applicable Products and Categories */}
+        <View style={styles.applicabilitySection}>
+          <View style={styles.applicabilityRow}>
+            <Ionicons name="cube-outline" size={14} color="#666" />
+            <Text style={styles.applicabilityLabel}>المنتجات:</Text>
+            <Text style={styles.applicabilityValue} numberOfLines={1}>
+              {getApplicableProductsText(item)}
+            </Text>
+          </View>
+          <View style={styles.applicabilityRow}>
+            <Ionicons name="folder-outline" size={14} color="#666" />
+            <Text style={styles.applicabilityLabel}>الفئات:</Text>
+            <Text style={styles.applicabilityValue} numberOfLines={1}>
+              {getApplicableCategoriesText(item)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Discount Details */}
+        {(item.minAmount || item.maxDiscount) && (
+          <View style={styles.constraintsSection}>
+            {item.minAmount && (
+              <Text style={styles.constraintText}>
+                الحد الأدنى: {formatPrice(item.minAmount)}
+              </Text>
+            )}
+            {item.maxDiscount && (
+              <Text style={styles.constraintText}>
+                أقصى خصم: {formatPrice(item.maxDiscount)}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Actions */}
+        <View style={styles.cardActions}>
           <TouchableOpacity 
-            style={styles.editBtn}
+            style={[styles.actionBtn, styles.detailsBtn]}
+            onPress={() => handleViewDetails(item)}
+          >
+            <Ionicons name="eye-outline" size={16} color="white" />
+            <Text style={styles.actionText}>التفاصيل</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.actionBtn, styles.editBtn]}
             onPress={() => handleEditDiscount(item)}
           >
-            <Ionicons name="create-outline" size={20} color={PRIMARY} />
+            <Ionicons name="create-outline" size={16} color="white" />
+            <Text style={styles.actionText}>تعديل</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={styles.deleteBtn}
+            style={[styles.actionBtn, styles.deleteBtn]}
             onPress={() => handleDeleteDiscount(item)}
           >
-            <Ionicons name="trash-outline" size={20} color={PINK} />
+            <Ionicons name="trash-outline" size={16} color="white" />
           </TouchableOpacity>
         </View>
       </View>
+    );
+  };
 
-      <View style={styles.productInfo}>
-        <Image 
-          source={{ uri: item.product?.image || 'https://placehold.co/300x200?text=Product' }} 
-          style={styles.productImage}
-        />
-        <View style={styles.productDetails}>
-          <Text style={styles.discountTitle}>{item.title || '---'}</Text>
-          <Text style={styles.productName}>{item.product?.name || '---'}</Text>
-          <Text style={styles.discountDescription}>{item.description || '---'}</Text>
+  const renderStatsCard = () => {
+    const stats = getDiscountStats();
+    
+    return (
+      <View style={styles.statsCard}>
+        <Text style={styles.statsTitle}>إحصائيات الخصومات</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.total}</Text>
+            <Text style={styles.statLabel}>إجمالي الخصومات</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: SUCCESS }]}>{stats.active}</Text>
+            <Text style={styles.statLabel}>نشط</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: WARNING }]}>{stats.upcoming}</Text>
+            <Text style={styles.statLabel}>قادم</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: ERROR }]}>{stats.expired}</Text>
+            <Text style={styles.statLabel}>منتهي</Text>
+          </View>
         </View>
       </View>
+    );
+  };
 
-      <View style={styles.priceInfo}>
-        <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>السعر الأصلي:</Text>
-          <Text style={styles.originalPrice}>{(item.originalPrice || 0).toFixed(2)} ريال</Text>
-        </View>
-        <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>السعر بعد الخصم:</Text>
-          <Text style={styles.discountPrice}>{(item.discountPrice || 0).toFixed(2)} ريال</Text>
-        </View>
-        <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>صالح حتى:</Text>
-          <Text style={styles.validUntil}>
-            {item.validUntil ? new Date(item.validUntil).toLocaleDateString('ar-SA') : '---'}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-
-  const renderProduct = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      style={[
-        styles.productOption,
-        formData.productId === item._id && styles.productOptionSelected
-      ]}
-      onPress={() => setFormData({ ...formData, productId: item._id })}
-    >
-      <Image 
-        source={{ uri: item.image || 'https://placehold.co/300x200?text=Product' }} 
-        style={styles.productOptionImage}
-      />
-      <View style={styles.productOptionInfo}>
-        <Text style={[
-          styles.productOptionName,
-          formData.productId === item._id && styles.productOptionNameSelected
-        ]}>
-          {item.name || '---'}
-        </Text>
-        <Text style={[
-          styles.productOptionPrice,
-          formData.productId === item._id && styles.productOptionPriceSelected
-        ]}>
-          {(item.price || 0).toFixed(2)} ريال
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
+  // Loading state
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
+        <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
         <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
           <Text style={styles.headerTitle}>إدارة الخصومات</Text>
-          <View style={styles.headerSpacer} />
         </View>
-        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={PRIMARY} />
-          <Text style={{ marginTop: 16, color: PRIMARY, fontSize: 16 }}>جاري تحميل الخصومات...</Text>
+        <LoadingComponent 
+          message="جاري تحميل الخصومات..."
+          iconName="pricetag-outline"
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>إدارة الخصومات</Text>
         </View>
+        <ErrorComponent 
+          message={error}
+          onRetry={loadData}
+          iconName="alert-circle-outline"
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
+      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
       
-      {/* الهيدر */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>إدارة الخصومات</Text>
-        <TouchableOpacity 
-          style={styles.addButton} 
-          onPress={handleAddDiscount}
-        >
-          <Ionicons name="add" size={24} color="white" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <Text style={styles.discountCount}>
+            {filteredDiscounts.length} خصم
+          </Text>
+          <TouchableOpacity 
+            style={styles.filterButton} 
+            onPress={() => setShowFiltersModal(true)}
+          >
+            <Ionicons name="filter" size={20} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.addButton} 
+            onPress={handleAddDiscount}
+          >
+            <Ionicons name="add" size={24} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* شريط البحث */}
+      {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="البحث في الخصومات..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor="#999"
-        />
-        <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+        <View style={styles.searchBar}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="البحث في الخصومات (الاسم، الوصف، الكود، المنتجات، الفئات)..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#999"
+          />
+          <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+        </View>
       </View>
 
-      {/* قائمة الخصومات */}
+      {/* Statistics */}
+      {filteredDiscounts.length > 0 && renderStatsCard()}
+
+      {/* Discounts List */}
       <FlatList
         data={filteredDiscounts}
-        renderItem={renderDiscount}
+        renderItem={renderDiscountCard}
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.discountsList}
         showsVerticalScrollIndicator={false}
@@ -403,20 +730,34 @@ export default function AdminDiscountsScreen() {
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="pricetag-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>
-              {searchQuery ? 'لا توجد خصومات تطابق البحث' : 'لا توجد خصومات'}
-            </Text>
-          </View>
+          <EmptyState 
+            iconName="pricetag-outline"
+            title={searchQuery || filters.status !== 'all' || filters.type !== 'all' 
+              ? 'لا توجد خصومات تطابق البحث' 
+              : 'لا توجد خصومات'
+            }
+            subtitle={searchQuery || filters.status !== 'all' || filters.type !== 'all'
+              ? 'جرب تغيير مصطلحات البحث أو المرشحات'
+              : 'يمكنك إضافة خصومات جديدة باستخدام زر الإضافة'
+            }
+            onAction={searchQuery || filters.status !== 'all' || filters.type !== 'all'
+              ? () => {
+                  setSearchQuery('');
+                  setFilters({ status: 'all', type: 'all' });
+                }
+              : handleAddDiscount
+            }
+            actionText={searchQuery || filters.status !== 'all' || filters.type !== 'all' ? 'مسح المرشحات' : 'إضافة خصم'}
+          />
         }
       />
 
-      {/* نافذة إضافة/تعديل الخصم */}
+      {/* Add/Edit Discount Modal - Due to space constraints, I'll create a simplified version */}
       <Modal
         visible={showAddModal}
         animationType="slide"
         presentationStyle="pageSheet"
+        onRequestClose={closeModal}
       >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
@@ -425,63 +766,422 @@ export default function AdminDiscountsScreen() {
             </Text>
             <TouchableOpacity 
               style={styles.closeButton}
-              onPress={() => setShowAddModal(false)}
+              onPress={closeModal}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.formScrollView} showsVerticalScrollIndicator={false}>
+            <View style={styles.formContainer}>
+              {/* Basic Info */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>معلومات أساسية</Text>
+                
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[styles.formInput, formErrors.name && styles.inputError]}
+                    placeholder="اسم الخصم *"
+                    value={formData.name}
+                    onChangeText={(text) => {
+                      setFormData({ ...formData, name: text });
+                      if (formErrors.name) {
+                        setFormErrors({ ...formErrors, name: undefined });
+                      }
+                    }}
+                    placeholderTextColor="#999"
+                  />
+                  {formErrors.name && <Text style={styles.errorText}>{formErrors.name}</Text>}
+                </View>
+
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  placeholder="وصف الخصم"
+                  value={formData.description}
+                  onChangeText={(text) => setFormData({ ...formData, description: text })}
+                  multiline
+                  numberOfLines={3}
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              {/* Discount Type and Value */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>نوع الخصم وقيمته</Text>
+                
+                <View style={styles.discountTypeSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeOption,
+                      formData.discountType === 'percentage' && styles.typeOptionSelected
+                    ]}
+                    onPress={() => setFormData({ ...formData, discountType: 'percentage' })}
+                  >
+                    <Text style={[
+                      styles.typeOptionText,
+                      formData.discountType === 'percentage' && styles.typeOptionTextSelected
+                    ]}>
+                      نسبة مئوية (%)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeOption,
+                      formData.discountType === 'fixed' && styles.typeOptionSelected
+                    ]}
+                    onPress={() => setFormData({ ...formData, discountType: 'fixed' })}
+                  >
+                    <Text style={[
+                      styles.typeOptionText,
+                      formData.discountType === 'fixed' && styles.typeOptionTextSelected
+                    ]}>
+                      مبلغ ثابت (ريال)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[styles.formInput, formErrors.discountValue && styles.inputError]}
+                    placeholder={formData.discountType === 'percentage' ? 'النسبة المئوية (1-100) *' : 'المبلغ الثابت *'}
+                    value={formData.discountValue}
+                    onChangeText={(text) => {
+                      setFormData({ ...formData, discountValue: text });
+                      if (formErrors.discountValue) {
+                        setFormErrors({ ...formErrors, discountValue: undefined });
+                      }
+                    }}
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                  />
+                  {formErrors.discountValue && <Text style={styles.errorText}>{formErrors.discountValue}</Text>}
+                </View>
+              </View>
+
+              {/* Constraints */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>قيود الخصم</Text>
+                
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="الحد الأدنى للمبلغ (اختياري)"
+                  value={formData.minAmount}
+                  onChangeText={(text) => setFormData({ ...formData, minAmount: text })}
+                  keyboardType="numeric"
+                  placeholderTextColor="#999"
+                />
+                
+                {formData.discountType === 'percentage' && (
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="أقصى مبلغ خصم (اختياري)"
+                    value={formData.maxDiscount}
+                    onChangeText={(text) => setFormData({ ...formData, maxDiscount: text })}
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                  />
+                )}
+              </View>
+
+              {/* Validity Period */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>فترة الصلاحية</Text>
+                
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[styles.formInput, formErrors.startDate && styles.inputError]}
+                    placeholder="تاريخ البداية (YYYY-MM-DD) *"
+                    value={formData.startDate}
+                    onChangeText={(text) => {
+                      setFormData({ ...formData, startDate: text });
+                      if (formErrors.startDate) {
+                        setFormErrors({ ...formErrors, startDate: undefined });
+                      }
+                    }}
+                    placeholderTextColor="#999"
+                  />
+                  {formErrors.startDate && <Text style={styles.errorText}>{formErrors.startDate}</Text>}
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[styles.formInput, formErrors.endDate && styles.inputError]}
+                    placeholder="تاريخ النهاية (YYYY-MM-DD) *"
+                    value={formData.endDate}
+                    onChangeText={(text) => {
+                      setFormData({ ...formData, endDate: text });
+                      if (formErrors.endDate) {
+                        setFormErrors({ ...formErrors, endDate: undefined });
+                      }
+                    }}
+                    placeholderTextColor="#999"
+                  />
+                  {formErrors.endDate && <Text style={styles.errorText}>{formErrors.endDate}</Text>}
+                </View>
+              </View>
+
+              {/* Status */}
+              <View style={styles.formSection}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.sectionTitle}>الخصم نشط</Text>
+                  <Switch
+                    value={formData.isActive}
+                    onValueChange={(value) => setFormData({ ...formData, isActive: value })}
+                    trackColor={{ false: '#767577', true: PRIMARY }}
+                    thumbColor={formData.isActive ? 'white' : '#f4f3f4'}
+                  />
+                </View>
+                <Text style={styles.helpText}>
+                  الخصومات غير النشطة لن تظهر للعملاء
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Save Button */}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]}
+              onPress={handleSaveDiscount}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator size="small" color="white" />
+                  <Text style={styles.saveButtonText}>جاري الحفظ...</Text>
+                </View>
+              ) : (
+                <Text style={styles.saveButtonText}>
+                  {editingDiscount ? 'تحديث الخصم' : 'إضافة الخصم'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Details Modal */}
+      <Modal
+        visible={showDetailsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeDetailsModal}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              تفاصيل الخصم
+            </Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={closeDetailsModal}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {selectedDiscount && (
+            <ScrollView style={styles.detailsContent} showsVerticalScrollIndicator={false}>
+              {/* Basic Information */}
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>معلومات أساسية</Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>اسم الخصم:</Text>
+                  <Text style={styles.detailValue}>{selectedDiscount.name}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>الوصف:</Text>
+                  <Text style={styles.detailValue}>{selectedDiscount.description || 'لا يوجد وصف'}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>الكود:</Text>
+                  <Text style={styles.detailValue}>{selectedDiscount.code || 'لا يوجد كود'}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>الحالة:</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: getDiscountStatusColor(selectedDiscount) }]}>
+                    <Text style={styles.statusText}>{getDiscountStatusText(selectedDiscount)}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Discount Details */}
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>تفاصيل الخصم</Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>نوع الخصم:</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedDiscount.discountType === 'percentage' ? 'نسبة مئوية' : 'مبلغ ثابت'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>قيمة الخصم:</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedDiscount.discountType === 'percentage' 
+                      ? `${selectedDiscount.discountValue}%` 
+                      : formatPrice(selectedDiscount.discountValue)
+                    }
+                  </Text>
+                </View>
+                {selectedDiscount.minAmount && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>الحد الأدنى:</Text>
+                    <Text style={styles.detailValue}>{formatPrice(selectedDiscount.minAmount)}</Text>
+                  </View>
+                )}
+                {selectedDiscount.maxDiscount && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>أقصى خصم:</Text>
+                    <Text style={styles.detailValue}>{formatPrice(selectedDiscount.maxDiscount)}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Validity Period */}
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>فترة الصلاحية</Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>تاريخ البداية:</Text>
+                  <Text style={styles.detailValue}>{formatDate(selectedDiscount.startDate)}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>تاريخ النهاية:</Text>
+                  <Text style={styles.detailValue}>{formatDate(selectedDiscount.endDate)}</Text>
+                </View>
+              </View>
+
+              {/* Applicable Products */}
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>
+                  المنتجات المشمولة ({selectedDiscount.applicableProducts?.length || 'جميع المنتجات'})
+                </Text>
+                {selectedDiscount.applicableProducts && selectedDiscount.applicableProducts.length > 0 ? (
+                  selectedDiscount.applicableProducts.map((product, index) => {
+                    const productName = typeof product === 'string' 
+                      ? products.find(p => p._id === product)?.name || 'منتج محذوف'
+                      : product.name;
+                    return (
+                      <Text key={index} style={styles.listItem}>• {productName}</Text>
+                    );
+                  })
+                ) : (
+                  <Text style={styles.listItem}>• جميع المنتجات</Text>
+                )}
+              </View>
+
+              {/* Applicable Categories */}
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>
+                  الفئات المشمولة ({selectedDiscount.applicableCategories?.length || 'جميع الفئات'})
+                </Text>
+                {selectedDiscount.applicableCategories && selectedDiscount.applicableCategories.length > 0 ? (
+                  selectedDiscount.applicableCategories.map((category, index) => {
+                    const categoryName = typeof category === 'string' 
+                      ? categories.find(c => c._id === category)?.name || 'فئة محذوفة'
+                      : category.name;
+                    return (
+                      <Text key={index} style={styles.listItem}>• {categoryName}</Text>
+                    );
+                  })
+                ) : (
+                  <Text style={styles.listItem}>• جميع الفئات</Text>
+                )}
+              </View>
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* Filters Modal */}
+      <Modal
+        visible={showFiltersModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowFiltersModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>مرشحات البحث</Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowFiltersModal(false)}
             >
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
           <View style={styles.formContainer}>
-            <TextInput
-              style={styles.formInput}
-              placeholder="عنوان الخصم"
-              value={formData.title}
-              onChangeText={(text) => setFormData({ ...formData, title: text })}
-            />
-            
-            <TextInput
-              style={[styles.formInput, styles.textArea]}
-              placeholder="وصف الخصم"
-              value={formData.description}
-              onChangeText={(text) => setFormData({ ...formData, description: text })}
-              multiline
-              numberOfLines={3}
-            />
-            
-            <TextInput
-              style={styles.formInput}
-              placeholder="نسبة الخصم (%)"
-              value={formData.discountPercentage}
-              onChangeText={(text) => setFormData({ ...formData, discountPercentage: text })}
-              keyboardType="numeric"
-            />
-            
-            <TextInput
-              style={styles.formInput}
-              placeholder="تاريخ انتهاء الصلاحية (YYYY-MM-DD)"
-              value={formData.validUntil}
-              onChangeText={(text) => setFormData({ ...formData, validUntil: text })}
-            />
-
-            <View style={styles.productSelector}>
-              <Text style={styles.productSelectorLabel}>اختر المنتج:</Text>
-              <FlatList
-                data={products}
-                renderItem={renderProduct}
-                keyExtractor={(item) => item._id}
-                showsVerticalScrollIndicator={false}
-                style={styles.productsList}
-              />
+            {/* Status Filter */}
+            <View style={styles.formSection}>
+              <Text style={styles.formSectionTitle}>حالة الخصم</Text>
+              {[
+                { value: 'all', label: 'جميع الحالات' },
+                { value: 'active', label: 'نشط' },
+                { value: 'inactive', label: 'غير نشط' },
+                { value: 'expired', label: 'منتهي الصلاحية' },
+                { value: 'upcoming', label: 'قادم' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.filterOption,
+                    filters.status === option.value && styles.filterOptionSelected
+                  ]}
+                  onPress={() => setFilters({ ...filters, status: option.value as any })}
+                >
+                  <Text style={[
+                    styles.filterOptionText,
+                    filters.status === option.value && styles.filterOptionTextSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <TouchableOpacity 
-              style={styles.saveButton}
-              onPress={handleSaveDiscount}
-            >
-              <Text style={styles.saveButtonText}>
-                {editingDiscount ? 'تحديث الخصم' : 'إضافة الخصم'}
-              </Text>
-            </TouchableOpacity>
+            {/* Type Filter */}
+            <View style={styles.formSection}>
+              <Text style={styles.formSectionTitle}>نوع الخصم</Text>
+              {[
+                { value: 'all', label: 'جميع الأنواع' },
+                { value: 'percentage', label: 'نسبة مئوية' },
+                { value: 'fixed', label: 'مبلغ ثابت' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.filterOption,
+                    filters.type === option.value && styles.filterOptionSelected
+                  ]}
+                  onPress={() => setFilters({ ...filters, type: option.value as any })}
+                >
+                  <Text style={[
+                    styles.filterOptionText,
+                    filters.type === option.value && styles.filterOptionTextSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.filterActions}>
+              <TouchableOpacity 
+                style={styles.clearFiltersButton}
+                onPress={() => {
+                  setFilters({ status: 'all', type: 'all' });
+                  setShowFiltersModal(false);
+                }}
+              >
+                <Text style={styles.clearFiltersText}>مسح المرشحات</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.applyFiltersButton}
+                onPress={() => setShowFiltersModal(false)}
+              >
+                <Text style={styles.applyFiltersText}>تطبيق المرشحات</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </SafeAreaView>
       </Modal>
@@ -496,47 +1196,56 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: PRIMARY,
-    paddingTop: Platform.OS === 'ios' ? 60 : (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 20 : 50),
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingBottom: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: 'white',
-    flex: 1,
-    textAlign: 'center',
   },
-  headerSpacer: {
-    width: 40,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  discountCount: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  filterButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 8,
+    borderRadius: 8,
   },
   addButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     padding: 8,
-  },
-  container: {
-    flex: 1,
-    padding: 20,
+    borderRadius: 8,
   },
   searchContainer: {
     backgroundColor: 'white',
     margin: 16,
     borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   searchInput: {
     flex: 1,
@@ -547,119 +1256,207 @@ const styles = StyleSheet.create({
   searchIcon: {
     marginLeft: 8,
   },
-  discountsList: {
-    padding: 16,
-  },
-  discountCard: {
+  statsCard: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    marginBottom: 16,
+    margin: 16,
+    marginTop: 0,
+    borderRadius: 12,
     padding: 16,
-    elevation: 4,
+    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    alignItems: 'center',
+    width: '23%',
+    marginBottom: 8,
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: PRIMARY,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#666',
+    textAlign: 'center',
+  },
+  discountsList: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  discountCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginBottom: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    overflow: 'hidden',
+  },
+  inactiveCard: {
+    opacity: 0.7,
+  },
   discountHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   discountBadge: {
     backgroundColor: PINK,
     borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     alignItems: 'center',
   },
-  discountPercentage: {
+  discountValue: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  discountLabel: {
+  discountType: {
     color: 'white',
     fontSize: 10,
   },
   discountActions: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
   },
-  editBtn: {
-    padding: 8,
+  discountInfo: {
+    padding: 16,
+    paddingTop: 12,
   },
-  deleteBtn: {
-    padding: 8,
-  },
-  productInfo: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  productDetails: {
-    flex: 1,
-  },
-  discountTitle: {
+  discountName: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 4,
   },
-  productName: {
-    fontSize: 14,
-    color: PRIMARY,
-    marginBottom: 4,
+  inactiveText: {
+    color: '#999',
   },
   discountDescription: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#666',
+    marginBottom: 8,
+    lineHeight: 20,
   },
-  priceInfo: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 12,
+  codeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  priceRow: {
+  discountCode: {
+    fontSize: 12,
+    color: PRIMARY,
+    fontWeight: '600',
+    fontFamily: 'monospace',
+  },
+  statusSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  priceLabel: {
-    fontSize: 14,
+  statusIndicator: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 10,
+    color: 'white',
+    fontWeight: '600',
+  },
+  dateInfo: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  dateText: {
+    fontSize: 11,
     color: '#666',
   },
-  originalPrice: {
-    fontSize: 14,
-    color: '#999',
-    textDecorationLine: 'line-through',
+  applicabilitySection: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
-  discountPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: PINK,
+  applicabilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 6,
   },
-  validUntil: {
+  applicabilityLabel: {
     fontSize: 12,
-    color: '#888',
+    color: '#666',
+    minWidth: 50,
   },
-  emptyState: {
+  applicabilityValue: {
+    flex: 1,
+    fontSize: 12,
+    color: '#333',
+  },
+  constraintsSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  constraintText: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 12,
+    gap: 4,
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 16,
-    textAlign: 'center',
+  detailsBtn: {
+    backgroundColor: PRIMARY,
+    borderBottomLeftRadius: 16,
+  },
+  editBtn: {
+    backgroundColor: WARNING,
+  },
+  deleteBtn: {
+    backgroundColor: ERROR,
+    borderBottomRightRadius: 16,
+    flex: 0.7,
+  },
+  actionText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '600',
   },
   modalContainer: {
     flex: 1,
@@ -681,14 +1478,29 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 8,
   },
+  formScrollView: {
+    flex: 1,
+  },
   formContainer: {
+    flex: 1,
     padding: 20,
+  },
+  formSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  inputContainer: {
+    marginBottom: 16,
   },
   formInput: {
     backgroundColor: 'white',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 16,
     fontSize: 16,
     textAlign: 'right',
     elevation: 2,
@@ -696,62 +1508,63 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginBottom: 16,
+  },
+  inputError: {
+    borderColor: ERROR,
   },
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  productSelector: {
-    marginBottom: 20,
-  },
-  productSelectorLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  errorText: {
+    fontSize: 12,
+    color: ERROR,
+    marginTop: -12,
     marginBottom: 8,
+    textAlign: 'right',
   },
-  productsList: {
-    maxHeight: 200,
-  },
-  productOption: {
+  discountTypeSelector: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: 'white',
-    borderRadius: 8,
-    marginBottom: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    marginBottom: 16,
+    gap: 8,
   },
-  productOptionSelected: {
+  typeOption: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  typeOptionSelected: {
     backgroundColor: PRIMARY,
   },
-  productOptionImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  productOptionInfo: {
-    flex: 1,
-  },
-  productOptionName: {
+  typeOptionText: {
     fontSize: 14,
+    color: '#666',
     fontWeight: '600',
-    color: '#333',
   },
-  productOptionNameSelected: {
+  typeOptionTextSelected: {
     color: 'white',
   },
-  productOptionPrice: {
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  helpText: {
     fontSize: 12,
     color: '#666',
+    fontStyle: 'italic',
   },
-  productOptionPriceSelected: {
-    color: 'rgba(255,255,255,0.8)',
+  modalFooter: {
+    padding: 20,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
   saveButton: {
     backgroundColor: PRIMARY,
@@ -764,7 +1577,127 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
   },
+  saveButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
   saveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailsContent: {
+    flex: 1,
+    padding: 20,
+  },
+  detailSection: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  detailSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    paddingBottom: 8,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  listItem: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  formSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+  },
+  filterOption: {
+    padding: 12,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    marginBottom: 8,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  filterOptionSelected: {
+    backgroundColor: PRIMARY,
+  },
+  filterOptionText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  filterOptionTextSelected: {
+    color: 'white',
+  },
+  filterActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  clearFiltersButton: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  clearFiltersText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  applyFiltersButton: {
+    flex: 1,
+    backgroundColor: PRIMARY,
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  applyFiltersText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',

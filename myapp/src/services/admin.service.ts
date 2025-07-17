@@ -39,24 +39,45 @@ export interface User {
   updatedAt: string;
 }
 
+export interface OrderItem {
+  productId: Product | string;
+  quantity: number;
+  price: number;
+}
+
 export interface Order {
   _id: string;
   user: User | string;
-  items: Array<{
-    productId: Product | string;
-    quantity: number;
-    price: number;
-  }>;
+  items: OrderItem[];
   totalAmount: number;
   orderStatus: 'processing' | 'shipped' | 'delivered' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'failed';
+  paymentMethod: 'cash' | 'card' | 'stcpay';
   shippingAddress: {
     street: string;
     city: string;
-    state: string;
-    zipCode: string;
-    country: string;
+    postalCode: string;
   };
+  discountCode?: string;
+  discountAmount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Discount {
+  _id: string;
+  name: string;
+  description?: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minAmount?: number;
+  maxDiscount?: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  code?: string;
+  applicableProducts?: Product[] | string[];
+  applicableCategories?: Category[] | string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -342,6 +363,61 @@ export class AdminService {
     }
   }
 
+  // Discounts
+  async getDiscounts(): Promise<Discount[]> {
+    try {
+      const response = await this.api.get<{ discounts: Discount[] }>('/discounts');
+      return Array.isArray(response.data.discounts) ? response.data.discounts : [];
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
+  async getDiscount(id: string): Promise<Discount> {
+    try {
+      const response = await this.api.get<Discount>(`/discounts/${id}`);
+      return response.data;
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
+  async createDiscount(discountData: Omit<Discount, '_id' | 'createdAt' | 'updatedAt' | 'code'>): Promise<Discount> {
+    try {
+      const response = await this.api.post<Discount>('/discounts', discountData);
+      return response.data;
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
+  async updateDiscount(id: string, discountData: Partial<Omit<Discount, '_id' | 'createdAt' | 'updatedAt'>>): Promise<Discount> {
+    try {
+      const response = await this.api.put<Discount>(`/discounts/${id}`, discountData);
+      return response.data;
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
+  async deleteDiscount(id: string): Promise<{ message: string }> {
+    try {
+      const response = await this.api.delete<{ message: string }>(`/discounts/${id}`);
+      return response.data;
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
+  async toggleDiscountStatus(id: string, isActive: boolean): Promise<Discount> {
+    try {
+      const response = await this.api.patch<Discount>(`/discounts/${id}/toggle`, { isActive });
+      return response.data;
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
   // Image upload utility
   async uploadImage(imageUri: string): Promise<string> {
     try {
@@ -404,6 +480,51 @@ export class AdminService {
       errors
     };
   }
+
+  validateDiscountData(data: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!data.name || typeof data.name !== 'string' || data.name.trim().length === 0) {
+      errors.push('اسم الخصم مطلوب');
+    }
+
+    if (!data.discountType || !['percentage', 'fixed'].includes(data.discountType)) {
+      errors.push('نوع الخصم مطلوب (percentage أو fixed)');
+    }
+
+    if (!data.discountValue || isNaN(parseFloat(data.discountValue)) || parseFloat(data.discountValue) <= 0) {
+      errors.push('قيمة الخصم يجب أن تكون رقم صحيح أكبر من صفر');
+    }
+
+    if (data.discountType === 'percentage' && parseFloat(data.discountValue) > 100) {
+      errors.push('نسبة الخصم لا يمكن أن تتجاوز 100%');
+    }
+
+    if (!data.startDate || isNaN(Date.parse(data.startDate))) {
+      errors.push('تاريخ البداية مطلوب وصحيح');
+    }
+
+    if (!data.endDate || isNaN(Date.parse(data.endDate))) {
+      errors.push('تاريخ النهاية مطلوب وصحيح');
+    }
+
+    if (data.startDate && data.endDate && new Date(data.startDate) >= new Date(data.endDate)) {
+      errors.push('تاريخ النهاية يجب أن يكون أكبر من تاريخ البداية');
+    }
+
+    if (data.minAmount && (isNaN(parseFloat(data.minAmount)) || parseFloat(data.minAmount) < 0)) {
+      errors.push('الحد الأدنى للمبلغ يجب أن يكون رقم صحيح أكبر من أو يساوي صفر');
+    }
+
+    if (data.maxDiscount && (isNaN(parseFloat(data.maxDiscount)) || parseFloat(data.maxDiscount) <= 0)) {
+      errors.push('الحد الأقصى للخصم يجب أن يكون رقم صحيح أكبر من صفر');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
 }
 
 // Utility functions
@@ -438,6 +559,95 @@ export const formatDate = (dateString: string): string => {
 
 export const formatDateShort = (dateString: string): string => {
   return new Date(dateString).toLocaleDateString('ar-SA');
+};
+
+// Order utility functions
+export const getOrderStatusColor = (status: Order['orderStatus']) => {
+  switch (status) {
+    case 'processing': return '#FF9800';
+    case 'shipped': return '#2196F3';
+    case 'delivered': return '#4CAF50';
+    case 'cancelled': return '#F44336';
+    default: return '#9E9E9E';
+  }
+};
+
+export const getOrderStatusText = (status: Order['orderStatus']): string => {
+  switch (status) {
+    case 'processing': return 'قيد المعالجة';
+    case 'shipped': return 'تم الشحن';
+    case 'delivered': return 'تم التسليم';
+    case 'cancelled': return 'ملغي';
+    default: return status;
+  }
+};
+
+export const getPaymentStatusColor = (status: Order['paymentStatus']) => {
+  switch (status) {
+    case 'pending': return '#FF9800';
+    case 'paid': return '#4CAF50';
+    case 'failed': return '#F44336';
+    default: return '#9E9E9E';
+  }
+};
+
+export const getPaymentStatusText = (status: Order['paymentStatus']): string => {
+  switch (status) {
+    case 'pending': return 'في الانتظار';
+    case 'paid': return 'مدفوع';
+    case 'failed': return 'فشل الدفع';
+    default: return status;
+  }
+};
+
+export const getPaymentMethodText = (method: Order['paymentMethod']): string => {
+  switch (method) {
+    case 'cash': return 'نقدي';
+    case 'card': return 'بطاقة ائتمان';
+    case 'stcpay': return 'STC Pay';
+    default: return method;
+  }
+};
+
+// Discount utility functions
+export const getDiscountStatusColor = (discount: Discount) => {
+  if (!discount.isActive) return '#9E9E9E';
+  const now = new Date();
+  const startDate = new Date(discount.startDate);
+  const endDate = new Date(discount.endDate);
+  
+  if (now < startDate) return '#FF9800'; // قادم
+  if (now > endDate) return '#F44336'; // منتهي الصلاحية
+  return '#4CAF50'; // نشط
+};
+
+export const getDiscountStatusText = (discount: Discount): string => {
+  if (!discount.isActive) return 'غير نشط';
+  const now = new Date();
+  const startDate = new Date(discount.startDate);
+  const endDate = new Date(discount.endDate);
+  
+  if (now < startDate) return 'قادم';
+  if (now > endDate) return 'منتهي الصلاحية';
+  return 'نشط';
+};
+
+export const calculateDiscountAmount = (originalPrice: number, discount: Discount): number => {
+  if (discount.discountType === 'percentage') {
+    const amount = (originalPrice * discount.discountValue) / 100;
+    return discount.maxDiscount ? Math.min(amount, discount.maxDiscount) : amount;
+  }
+  return Math.min(discount.discountValue, originalPrice);
+};
+
+export const getProductName = (product: Product | string): string => {
+  if (typeof product === 'string') return product;
+  return product?.name || 'غير محدد';
+};
+
+export const getUserName = (user: User | string): string => {
+  if (typeof user === 'string') return user;
+  return user?.username || 'غير محدد';
 };
 
 // React hook for admin service
