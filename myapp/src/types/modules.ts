@@ -98,7 +98,10 @@ export interface OrderItem {
 export interface ShippingAddress {
   street: string;
   city: string;
+  state: string;
   postalCode: string;
+  zipCode: string;
+  phone: string;
 }
 
 export interface Payment {

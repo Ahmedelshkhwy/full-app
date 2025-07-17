@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   RefreshControl,
-  ActivityIndicator,
   Alert,
   StyleSheet,
 } from 'react-native';
@@ -16,6 +15,11 @@ import { OrderCard } from '../../src/components/OrderCard';
 import { OrderDetailsModal } from '../../src/components/OrderDetailsModal';
 import { StatusChangeModal } from '../../src/components/StatusChangeModal';
 import { Colors, Spacing, FontSizes, GlobalStyles } from '../../src/styles/globalStyles';
+import SafeScreen from '../../src/components/SafeScreen';
+import LoadingComponent from '../../src/components/LoadingComponent';
+import ErrorComponent from '../../src/components/ErrorComponent';
+import EmptyState from '../../src/components/EmptyState';
+import { Theme } from '../../src/constants/Theme';
 
 // استخدام متغيرات البيئة للـ API
 const API_BASE = process.env.EXPO_PUBLIC_API_ADMIN_URL || 'http://172.19.112.1:5000/api/admin';
@@ -181,25 +185,21 @@ export default function OrdersScreen() {
   );
 
   const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Ionicons name="receipt-outline" size={64} color={Colors.gray[300]} />
-      <Text style={styles.emptyTitle}>لا توجد طلبات</Text>
-      <Text style={styles.emptySubtitle}>
-        لم يتم تسجيل أي طلبات حتى الآن
-      </Text>
-    </View>
+    <EmptyState
+      iconName="receipt-outline"
+      title="لا توجد طلبات"
+      subtitle="لم يتم تسجيل أي طلبات حتى الآن"
+      showAction={false}
+    />
   );
 
   if (loading) {
     return (
-      <View style={[GlobalStyles.container, styles.loadingContainer]}>
+      <SafeScreen backgroundColor={Theme.colors.background}>
         <Stack.Screen options={{ headerShown: false }} />
         <AdminHeader title="إدارة الطلبات" />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>جاري تحميل الطلبات...</Text>
-        </View>
-      </View>
+        <LoadingComponent message="جاري تحميل الطلبات..." />
+      </SafeScreen>
     );
   }
 
@@ -250,40 +250,8 @@ export default function OrdersScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    backgroundColor: Colors.background.secondary,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: FontSizes.md,
-    color: Colors.text.secondary,
-    marginTop: Spacing.md,
-  },
   listContainer: {
     padding: Spacing.md,
     flexGrow: 1,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: Spacing.xxl,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: '600',
-    color: Colors.text.primary,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
-  },
-  emptySubtitle: {
-    fontSize: FontSizes.md,
-    color: Colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
   },
 });
