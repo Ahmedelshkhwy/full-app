@@ -2,6 +2,7 @@ import * as bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/user.model';
+import { envConfig } from '../config/env.validation';
 
 // Register controller
 export const register = async (req: Request, res: Response): Promise<Response> => {
@@ -30,7 +31,7 @@ export const register = async (req: Request, res: Response): Promise<Response> =
 
     const token = jwt.sign(
       { id: user._id, username: user.username, role: user.role },
-      process.env['JWT_SECRET'] as string,
+      envConfig.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -59,7 +60,7 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
     }
     const token = jwt.sign(
       { id: user._id, username: user.username, role: user.role },
-      process.env['JWT_SECRET'] as string,
+      envConfig.JWT_SECRET,
       { expiresIn: '7d' }
     );
     console.log(token);

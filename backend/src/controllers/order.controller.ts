@@ -133,11 +133,36 @@ export const placeOrder = async (req: Request, res: Response) => {
       orderStatus: 'processing',
     });
 
-    // تحديث المخزون بعد إنشاء الطلب
+    // تحديث المخزون بعد إنشاء الطلب مع التحقق من السباق
     for (const item of orderItems) {
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { stock: -item.quantity }
-      });
+      const result = await Product.findOneAndUpdate(
+        { 
+          _id: item.productId, 
+          stock: { $gte: item.quantity } // تأكد من وجود مخزون كافي
+        },
+        {
+          $inc: { stock: -item.quantity }
+        },
+        { new: true }
+      );
+      
+      // إذا فشل التحديث، فهذا يعني أن المخزون غير كافي
+      if (!result) {
+        // إلغاء الطلب وإرجاع المخزون المُخصَم مسبقاً
+        await Order.findByIdAndDelete(order._id);
+        
+        // إرجاع المخزون للمنتجات التي تم خصمها
+        for (let i = 0; i < orderItems.indexOf(item); i++) {
+          await Product.findByIdAndUpdate(orderItems[i].productId, {
+            $inc: { stock: orderItems[i].quantity }
+          });
+        }
+        
+        const product = await Product.findById(item.productId);
+        return res.status(400).json({ 
+          message: `المنتج "${product?.name || 'غير معروف'}" نفد من المخزون أثناء المعالجة` 
+        });
+      }
     }
 
     // مسح السلة بعد إنشاء الطلب (فقط إذا تم استخدام السلة)

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, ReactNode, useEffect, useState } from 'react';
+import React, { createContext, ReactNode, useEffect, useState, useCallback } from 'react';
 import { getMyOrders } from '../api/api';
 
 export type OrderItem = {
@@ -93,7 +93,7 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const loadOrdersFromBackend = async (token: string) => {
+  const loadOrdersFromBackend = useCallback(async (token: string) => {
     setIsLoading(true);
     setError(null);
     
@@ -114,7 +114,7 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const addOrder = async (order: Order) => {
     try {
