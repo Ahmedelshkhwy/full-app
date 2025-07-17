@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { Theme } from '../constants/Theme';
 
 interface AdminHeaderProps {
   title: string;
@@ -14,43 +15,35 @@ interface AdminHeaderProps {
 export default function AdminHeader({ title, onBack, actionIcon, onAction, actionBadge }: AdminHeaderProps) {
   const router = useRouter();
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#0066CC" />
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack || (() => router.back())}>
-          <Ionicons name="arrow-back" size={24} color="white" />
+    <View style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor={Theme.colors.primary} />
+      <TouchableOpacity style={styles.backButton} onPress={onBack || (() => router.back())}>
+        <Ionicons name="arrow-back" size={24} color="white" />
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>{title}</Text>
+      {actionIcon ? (
+        <TouchableOpacity style={styles.actionButton} onPress={onAction}>
+          <Ionicons name={actionIcon as any} size={24} color="white" />
+          {actionBadge ? (
+            <View style={styles.badge}><Text style={styles.badgeText}>{actionBadge}</Text></View>
+          ) : null}
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{title}</Text>
-        {actionIcon ? (
-          <TouchableOpacity style={styles.actionButton} onPress={onAction}>
-            <Ionicons name={actionIcon as any} size={24} color="white" />
-            {actionBadge ? (
-              <View style={styles.badge}><Text style={styles.badgeText}>{actionBadge}</Text></View>
-            ) : null}
-          </TouchableOpacity>
-        ) : <View style={{ width: 32 }} />}
-      </View>
-    </SafeAreaView>
+      ) : <View style={{ width: 32 }} />}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    backgroundColor: '#0066CC',
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#0066CC',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.lg,
+    backgroundColor: Theme.colors.primary,
+    borderBottomLeftRadius: Theme.borderRadius.xxl,
+    borderBottomRightRadius: Theme.borderRadius.xxl,
+    ...Theme.shadows.small,
   },
   backButton: {
     padding: 8,

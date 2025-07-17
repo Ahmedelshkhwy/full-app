@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Theme } from '../constants/Theme';
 
 interface LoadingComponentProps {
   message?: string;
@@ -13,7 +14,7 @@ interface LoadingComponentProps {
 export default function LoadingComponent({
   message = 'جاري التحميل...',
   size = 'large',
-  color = '#23B6C7',
+  color = Theme.colors.primary,
   showIcon = true,
   iconName = 'refresh'
 }: LoadingComponentProps) {
@@ -44,30 +45,26 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Theme.colors.gray[100],
   },
   loadingBox: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 24,
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.borderRadius.lg,
+    padding: Theme.spacing.lg,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...Theme.shadows.medium,
     minWidth: 200,
   },
   icon: {
-    marginBottom: 16,
+    marginBottom: Theme.spacing.md,
     opacity: 0.8,
   },
   spinner: {
-    marginBottom: 16,
+    marginBottom: Theme.spacing.md,
   },
   message: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.medium,
     textAlign: 'center',
   },
 });

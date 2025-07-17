@@ -5,22 +5,25 @@ import {
   FlatList,
   Image,
   Platform,
-  SafeAreaView,
-  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useOrders, Order } from '../../src/contexts/OrdersContext';
 import { useRouter } from 'expo-router';
+import SafeScreen from '../../src/components/SafeScreen';
+import AppHeader from '../../src/components/AppHeader';
+import LoadingComponent from '../../src/components/LoadingComponent';
+import ErrorComponent from '../../src/components/ErrorComponent';
+import EmptyState from '../../src/components/EmptyState';
+import { Theme } from '../../src/constants/Theme';
 
-const PRIMARY = '#23B6C7';
-const PINK = '#E94B7B';
-const BG = '#E6F3F7';
+const PRIMARY = Theme.colors.primary;
+const PINK = Theme.colors.error;
+const BG = Theme.colors.background;
 
 const statusColors = {
   pending: '#FFA500',
@@ -172,33 +175,22 @@ export default function OrdersScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>طلباتي</Text>
-        </View>
-        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={PRIMARY} />
-          <Text style={{ marginTop: 16, color: PRIMARY, fontSize: 16 }}>جاري تحميل الطلبات...</Text>
-        </View>
-      </SafeAreaView>
+      <SafeScreen backgroundColor={BG}>
+        <AppHeader title="طلباتي" />
+        <LoadingComponent message="جاري تحميل الطلبات..." />
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
-      
-      {/* الهيدر */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>طلباتي</Text>
-        <TouchableOpacity 
-          style={styles.refreshButton} 
-          onPress={onRefresh}
-        >
-          <Ionicons name="refresh-outline" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
+    <SafeScreen backgroundColor={BG}>
+      <AppHeader 
+        title="طلباتي" 
+        rightAction={{
+          icon: "refresh-outline",
+          onPress: onRefresh
+        }}
+      />
 
       {/* فلاتر الحالة */}
       <View style={styles.filtersContainer}>
@@ -228,49 +220,20 @@ export default function OrdersScreen() {
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="receipt-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>
-              {selectedStatus !== 'all' ? 'لا توجد طلبات بهذه الحالة' : 'لا توجد طلبات بعد'}
-            </Text>
-            <Text style={styles.emptySubText}>
-              ابدأ بالتسوق من الصفحة الرئيسية
-            </Text>
-            <TouchableOpacity 
-              style={styles.shopButton}
-              onPress={() => router.push('/(tabs)/home')}
-            >
-              <Text style={styles.shopButtonText}>تسوق الآن</Text>
-            </TouchableOpacity>
-          </View>
+          <EmptyState
+            iconName="receipt-outline"
+            title={selectedStatus !== 'all' ? 'لا توجد طلبات بهذه الحالة' : 'لا توجد طلبات بعد'}
+            subtitle="ابدأ بالتسوق من الصفحة الرئيسية"
+            actionText="تسوق الآن"
+            onAction={() => router.push('/(tabs)/home')}
+          />
         }
       />
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: BG,
-  },
-  header: {
-    backgroundColor: PRIMARY,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  refreshButton: {
-    padding: 8,
-  },
   container: {
     flex: 1,
     padding: 20,
@@ -413,33 +376,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 4,
   },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  emptySubText: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  shopButton: {
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  shopButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+
 }); 

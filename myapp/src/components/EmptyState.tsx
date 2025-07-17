@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Theme } from '../constants/Theme';
 
 interface EmptyStateProps {
   iconName?: keyof typeof Ionicons.glyphMap;
@@ -25,7 +26,7 @@ export default function EmptyState({
         <Ionicons 
           name={iconName} 
           size={80} 
-          color="#ccc" 
+          color={Theme.colors.gray[300]} 
           style={styles.icon}
         />
         <Text style={styles.title}>{title}</Text>
@@ -35,7 +36,7 @@ export default function EmptyState({
             style={styles.actionButton}
             onPress={onAction}
           >
-            <Ionicons name="refresh" size={18} color="#23B6C7" />
+            <Ionicons name="refresh" size={18} color={Theme.colors.primary} />
             <Text style={styles.actionText}>{actionText}</Text>
           </TouchableOpacity>
         )}
@@ -49,44 +50,44 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    padding: Theme.spacing.xxl,
   },
   content: {
     alignItems: 'center',
     maxWidth: 300,
   },
   icon: {
-    marginBottom: 20,
+    marginBottom: Theme.spacing.lg,
     opacity: 0.6,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: Theme.fontSize.xl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.gray[700],
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: Theme.spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.gray[500],
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 24,
+    marginBottom: Theme.spacing.lg,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f0f9ff',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.md,
     borderWidth: 1,
-    borderColor: '#23B6C7',
-    gap: 8,
+    borderColor: Theme.colors.primary,
+    gap: Theme.spacing.sm,
   },
   actionText: {
-    color: '#23B6C7',
-    fontSize: 16,
-    fontWeight: '600',
+    color: Theme.colors.primary,
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semiBold,
   },
 });

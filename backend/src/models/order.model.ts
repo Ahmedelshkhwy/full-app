@@ -15,7 +15,10 @@ export interface IOrder extends Document {
   shippingAddress: {
     street: string;
     city: string;
+    state: string;
     postalCode: string;
+    zipCode: string;
+    phone: string;
   };
   orderStatus: 'processing' | 'shipped' | 'delivered' | 'cancelled';
   discountCode?: string;
@@ -48,7 +51,10 @@ const OrderSchema: Schema = new Schema(
     shippingAddress: {
       street: { type: String, required: true },
       city: { type: String, required: true },
+      state: { type: String, required: true },
       postalCode: { type: String, required: true },
+      zipCode: { type: String, required: true },
+      phone: { type: String, required: true },
     },
     orderStatus: {
       type: String,

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  FlatList,
+  RefreshControl,
+  Alert,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -20,9 +23,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useRouter } from 'expo-router';
+import AdminHeader from '../../src/components/AdminHeader';
+import { OrderCard } from '../../src/components/OrderCard';
+import { OrderDetailsModal } from '../../src/components/OrderDetailsModal';
+import { StatusChangeModal } from '../../src/components/StatusChangeModal';
+import SafeScreen from '../../src/components/SafeScreen';
 import LoadingComponent from '../../src/components/LoadingComponent';
 import ErrorComponent from '../../src/components/ErrorComponent';
 import EmptyState from '../../src/components/EmptyState';
+import AppHeader from '../../src/components/AppHeader';
+import { Theme } from '../../src/constants/Theme';
 import { 
   useAdminService, 
   AdminServiceError, 
@@ -240,6 +250,15 @@ export default function AdminOrdersScreen() {
     setSelectedOrder(null);
     setStatusForm({ orderStatus: '' as OrderStatus, paymentStatus: '' as PaymentStatus });
   };
+
+  const renderEmptyState = () => (
+    <EmptyState
+      iconName="receipt-outline"
+      title="لا توجد طلبات"
+      subtitle="لم يتم تسجيل أي طلبات حتى الآن"
+      showAction={false}
+    />
+  );
 
   // Status update
   const handleUpdateStatus = async () => {
@@ -902,6 +921,10 @@ export default function AdminOrdersScreen() {
 }
 
 const styles = StyleSheet.create({
+  listContainer: {
+    padding: Theme.spacing.md,
+    flexGrow: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: BG,
@@ -1296,11 +1319,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#f0f0f0',
     paddingTop: 8,
     marginTop: 8,
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
   },
   totalValue: {
     fontSize: 16,

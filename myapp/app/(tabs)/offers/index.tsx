@@ -21,6 +21,8 @@ import { getOffers } from '../../../src/api/api';
 import LoadingComponent from '../../../src/components/LoadingComponent';
 import ErrorComponent from '../../../src/components/ErrorComponent';
 import EmptyState from '../../../src/components/EmptyState';
+import SafeScreen from '../../../src/components/SafeScreen';
+import AppHeader from '../../../src/components/AppHeader';
 
 const PRIMARY = '#23B6C7';
 const PINK = '#E94B7B';
@@ -287,42 +289,33 @@ export default function OffersScreen() {
   // عرض Loading Component
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>العروض والخصومات</Text>
-        </View>
+      <SafeScreen backgroundColor={BG}>
+        <AppHeader title="العروض والخصومات" />
         <LoadingComponent 
           message="جاري تحميل العروض..."
           iconName="pricetag-outline"
         />
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   // عرض Error Component
   if (error) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>العروض والخصومات</Text>
-        </View>
+      <SafeScreen backgroundColor={BG}>
+        <AppHeader title="العروض والخصومات" />
         <ErrorComponent 
           message={error}
           onRetry={loadOffers}
           iconName="alert-circle-outline"
         />
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={PRIMARY} />
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>العروض والخصومات</Text>
-      </View>
+    <SafeScreen backgroundColor={BG}>
+      <AppHeader title="العروض والخصومات" />
       
       <View style={styles.container}>
         <FlatList
