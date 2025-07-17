@@ -66,7 +66,7 @@ export default function OrdersScreen() {
     if (token) {
       loadOrdersFromBackend(token);
     }
-  }, [token]);
+  }, [token, loadOrdersFromBackend]);
 
   const onRefresh = async () => {
     setRefreshing(true);
