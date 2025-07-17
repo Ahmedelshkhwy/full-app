@@ -24,13 +24,12 @@ import offersRoutes from './routes/offers.routes';
 import accountingRoutes from './routes/accounting.routes';
 import otpRoutes from './routes/otp.routes';
 
-// Load environment variables
-import dotenv from 'dotenv';
-dotenv.config({ path: path.join(__dirname, '../.env') });
+// Load and validate environment variables
+import { envConfig } from './config/env.validation';
 
 console.log('🔧 Loading environment variables...');
 try {
-  // This will validate all required env vars
+  // Environment validation is done in env.validation.ts
   console.log('✅ Environment validation passed');
 } catch (error) {
   console.error('❌ Environment validation failed:', error);
@@ -62,10 +61,9 @@ app.use(helmet());
 // Connect to MongoDB
 const connectDB = async () => {
   try {
-    const mongoUri = process.env['MONGODB_URI'] || 'mongodb://localhost:27017/pharmacy';
     console.log('🔗 Connecting to MongoDB...');
-    console.log('📡 MongoDB URI:', mongoUri.replace(/\/\/.*@/, '//***:***@')); // Hide credentials
-    await mongoose.connect(mongoUri);
+    console.log('📡 MongoDB URI:', envConfig.MONGODB_URI.replace(/\/\/.*@/, '//***:***@')); // Hide credentials
+    await mongoose.connect(envConfig.MONGODB_URI);
     console.log('✅ MongoDB connected successfully');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
