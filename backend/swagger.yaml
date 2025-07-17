@@ -1,0 +1,2002 @@
+openapi: 3.0.0
+info:
+   title: صيدليات الشافي API
+   description: التوثيق الرسمي لـ REST API الخاصة بتطبيق صيدليات الشافي.
+   version: "2.0.0"
+servers:
+   - url: http://localhost:5000/api
+     description: Local development server
+   - url: https://localhost:5000/api
+     description: Local HTTPS development server
+
+paths:
+   # Authentication Routes
+   /auth/register:
+      post:
+         tags: [Authentication]
+         summary: تسجيل مستخدم جديد
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [username, email, password]
+                     properties:
+                        username:
+                           type: string
+                           example: "ahmad123"
+                        email:
+                           type: string
+                           format: email
+                           example: "ahmad@example.com"
+                        password:
+                           type: string
+                           minLength: 6
+                           example: "password123"
+                        phone:
+                           type: string
+                           example: "0501234567"
+                        address:
+                           type: string
+                           example: "الرياض، المملكة العربية السعودية"
+                        location:
+                           type: object
+                           properties:
+                              lat:
+                                 type: number
+                              lng:
+                                 type: number
+                        role:
+                           type: string
+                           enum: [user, admin, pharmacist, delivery, accountant]
+                           default: user
+         responses:
+            "201":
+               description: تم إنشاء المستخدم بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           user:
+                              type: object
+                              properties:
+                                 id:
+                                    type: string
+                                 username:
+                                    type: string
+                                 email:
+                                    type: string
+                                 role:
+                                    type: string
+                           token:
+                              type: string
+            "400":
+               description: خطأ في البيانات المدخلة
+            "500":
+               description: خطأ في الخادم
+
+   /auth/login:
+      post:
+         tags: [Authentication]
+         summary: تسجيل الدخول
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [email, password]
+                     properties:
+                        email:
+                           type: string
+                           format: email
+                           example: "ahmad@example.com"
+                        password:
+                           type: string
+                           example: "password123"
+         responses:
+            "200":
+               description: تسجيل الدخول ناجح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           user:
+                              type: object
+                           token:
+                              type: string
+            "401":
+               description: بيانات الدخول غير صحيحة
+            "500":
+               description: خطأ في الخادم
+
+   # OTP Routes
+   /otp/send/register:
+      post:
+         tags: [OTP, Authentication]
+         summary: إرسال رمز OTP للتسجيل
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [email]
+                     properties:
+                        email:
+                           type: string
+                           format: email
+                           example: "ahmad@example.com"
+                        phone:
+                           type: string
+                           example: "0501234567"
+                        userData:
+                           type: object
+                           description: بيانات المستخدم للتسجيل المؤقت
+                           properties:
+                              username:
+                                 type: string
+                              email:
+                                 type: string
+                              password:
+                                 type: string
+                              phone:
+                                 type: string
+                              address:
+                                 type: string
+                              location:
+                                 type: object
+                                 properties:
+                                    lat:
+                                       type: number
+                                    lng:
+                                       type: number
+         responses:
+            "200":
+               description: تم إرسال رمز OTP بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           message:
+                              type: string
+                              example: "تم إرسال رمز التحقق بنجاح"
+                           otpId:
+                              type: string
+                              example: "60f1b2a3c4d5e6f7g8h9i0j1"
+            "400":
+               description: البريد الإلكتروني مُسجل مسبقاً أو خطأ في البيانات
+            "500":
+               description: خطأ في الخادم
+
+   /otp/send/reset-password:
+      post:
+         tags: [OTP, Authentication]
+         summary: إرسال رمز OTP لاستعادة كلمة المرور
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [email]
+                     properties:
+                        email:
+                           type: string
+                           format: email
+                           example: "ahmad@example.com"
+         responses:
+            "200":
+               description: تم إرسال رمز OTP بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           message:
+                              type: string
+                              example: "تم إرسال رمز استعادة كلمة المرور"
+                           otpId:
+                              type: string
+            "404":
+               description: البريد الإلكتروني غير مسجل
+            "500":
+               description: خطأ في الخادم
+
+   /otp/verify:
+      post:
+         tags: [OTP, Authentication]
+         summary: التحقق من رمز OTP
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [otpId, code]
+                     properties:
+                        otpId:
+                           type: string
+                           example: "60f1b2a3c4d5e6f7g8h9i0j1"
+                        code:
+                           type: string
+                           example: "123456"
+         responses:
+            "200":
+               description: تم التحقق بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           message:
+                              type: string
+                              example: "تم التحقق بنجاح"
+                           token:
+                              type: string
+                              description: JWT token (للتسجيل فقط)
+                           user:
+                              $ref: '#/components/schemas/User'
+            "400":
+               description: رمز OTP غير صحيح أو منتهي الصلاحية
+            "404":
+               description: معرف OTP غير موجود
+            "500":
+               description: خطأ في الخادم
+
+   /otp/resend:
+      post:
+         tags: [OTP]
+         summary: إعادة إرسال رمز OTP
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [otpId]
+                     properties:
+                        otpId:
+                           type: string
+                           example: "60f1b2a3c4d5e6f7g8h9i0j1"
+         responses:
+            "200":
+               description: تم إعادة إرسال الرمز بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           message:
+                              type: string
+                              example: "تم إعادة إرسال رمز التحقق"
+            "400":
+               description: تم الوصول للحد الأقصى لإعادة الإرسال
+            "404":
+               description: معرف OTP غير موجود
+            "500":
+               description: خطأ في الخادم
+
+   /auth/reset-password:
+      post:
+         tags: [Authentication]
+         summary: إعادة تعيين كلمة المرور باستخدام OTP
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required: [otpId, code, newPassword]
+                     properties:
+                        otpId:
+                           type: string
+                           example: "60f1b2a3c4d5e6f7g8h9i0j1"
+                        code:
+                           type: string
+                           example: "123456"
+                        newPassword:
+                           type: string
+                           minLength: 6
+                           example: "newpassword123"
+         responses:
+            "200":
+               description: تم إعادة تعيين كلمة المرور بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           message:
+                              type: string
+                              example: "تم إعادة تعيين كلمة المرور بنجاح"
+            "400":
+               description: رمز OTP غير صحيح أو كلمة المرور ضعيفة
+            "404":
+               description: معرف OTP غير موجود
+            "500":
+               description: خطأ في الخادم
+
+   # Product Routes
+   /products:
+      get:
+         tags: [Products]
+         summary: جلب كل المنتجات
+         responses:
+            "200":
+               description: قائمة المنتجات
+               content:
+                  application/json:
+                     schema:
+                        type: array
+                        items:
+                           $ref: '#/components/schemas/Product'
+      post:
+         tags: [Products]
+         summary: إضافة منتج جديد (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: '#/components/schemas/ProductInput'
+         responses:
+            "201":
+               description: تم إنشاء المنتج بنجاح
+            "403":
+               description: غير مصرح لك بالوصول
+
+   /products/{productId}:
+      get:
+         tags: [Products]
+         summary: تفاصيل منتج معين
+         parameters:
+            - name: productId
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تفاصيل المنتج
+               content:
+                  application/json:
+                     schema:
+                        $ref: '#/components/schemas/Product'
+            "404":
+               description: المنتج غير موجود
+
+   # Category Routes
+   /categories:
+      get:
+         tags: [Categories]
+         summary: جلب جميع الفئات
+         responses:
+            "200":
+               description: قائمة الفئات
+               content:
+                  application/json:
+                     schema:
+                        type: array
+                        items:
+                           $ref: '#/components/schemas/Category'
+      post:
+         tags: [Categories]
+         summary: إنشاء فئة جديدة
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: '#/components/schemas/CategoryInput'
+         responses:
+            "201":
+               description: تم إنشاء الفئة بنجاح
+
+   /categories/{id}:
+      get:
+         tags: [Categories]
+         summary: جلب فئة معينة
+         parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تفاصيل الفئة
+      put:
+         tags: [Categories]
+         summary: تحديث فئة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                 type: string
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: '#/components/schemas/CategoryInput'
+         responses:
+            "200":
+               description: تم تحديث الفئة بنجاح
+      delete:
+         tags: [Categories]
+         summary: حذف فئة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تم حذف الفئة بنجاح
+
+   # Cart Routes
+   /cart:
+      get:
+         tags: [Cart]
+         summary: عرض محتوى السلة (للمستخدم المسجل)
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: محتويات السلة
+               content:
+                  application/json:
+                     schema:
+                        $ref: '#/components/schemas/Cart'
+      post:
+         tags: [Cart]
+         summary: إضافة منتج إلى السلة
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required:
+                        - productId
+                        - quantity
+                     properties:
+                        productId:
+                           type: string
+                        quantity:
+                           type: integer
+                           minimum: 1
+         responses:
+            "200":
+               description: تمت إضافة المنتج للسلة
+
+   /cart/{productId}:
+      delete:
+         tags: [Cart]
+         summary: إزالة منتج من السلة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: productId
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تم حذف المنتج من السلة
+      put:
+         tags: [Cart]
+         summary: تحديث كمية منتج في السلة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: productId
+              in: path
+              required: true
+              schema:
+                 type: string
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     properties:
+                        quantity:
+                           type: integer
+                           minimum: 1
+         responses:
+            "200":
+               description: تم تحديث الكمية
+
+   /cart/admin:
+      get:
+         tags: [Cart, Admin]
+         summary: عرض جميع السلال (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: قائمة جميع السلال
+            "403":
+               description: غير مصرح لك بالوصول
+
+   # Order Routes
+   /orders:
+      get:
+         tags: [Orders, Admin]
+         summary: جلب جميع الطلبات (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: قائمة جميع الطلبات
+            "403":
+               description: غير مصرح لك بالوصول
+      post:
+         tags: [Orders]
+         summary: إنشاء طلب جديد
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required:
+                        - items
+                        - shippingAddress
+                        - paymentMethod
+                     properties:
+                        items:
+                           type: array
+                           items:
+                              type: object
+                              properties:
+                                 productId:
+                                    type: string
+                                 quantity:
+                                    type: integer
+                                 price:
+                                    type: number
+                        shippingAddress:
+                           type: object
+                           properties:
+                              street:
+                                 type: string
+                              city:
+                                 type: string
+                              postalCode:
+                                 type: string
+                        paymentMethod:
+                           type: string
+                           enum: [cash, card, stcpay]
+                        discountCode:
+                           type: string
+         responses:
+            "201":
+               description: تم إنشاء الطلب بنجاح
+            "400":
+               description: خطأ في بيانات الطلب
+
+   /orders/my-orders:
+      get:
+         tags: [Orders]
+         summary: عرض طلبات المستخدم الحالي
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: قائمة طلبات المستخدم
+               content:
+                  application/json:
+                     schema:
+                        type: array
+                        items:
+                           $ref: '#/components/schemas/Order'
+
+   /orders/{orderId}:
+      get:
+         tags: [Orders]
+         summary: تفاصيل طلب معين
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: orderId
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تفاصيل الطلب
+               content:
+                  application/json:
+                     schema:
+                        $ref: '#/components/schemas/Order'
+            "404":
+               description: الطلب غير موجود
+      delete:
+         tags: [Orders]
+         summary: إلغاء طلب معين
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: orderId
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تم إلغاء الطلب
+            "404":
+               description: الطلب غير موجود
+
+   # Payment Routes
+   /payment:
+      post:
+         tags: [Payment]
+         summary: معالجة عملية الدفع
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required:
+                        - amount
+                        - paymentMethod
+                     properties:
+                        amount:
+                           type: number
+                           minimum: 1
+                        paymentMethod:
+                           type: string
+                           enum: [cash, card, stcpay]
+                        orderId:
+                           type: string
+         responses:
+            "200":
+               description: تمت معالجة الدفع بنجاح
+            "400":
+               description: خطأ في بيانات الدفع
+            "500":
+               description: خطأ في معالجة الدفع
+
+   # User Routes
+   /user/profile:
+      get:
+         tags: [User]
+         summary: جلب ملف المستخدم الشخصي
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: بيانات المستخدم
+               content:
+                  application/json:
+                     schema:
+                        $ref: '#/components/schemas/User'
+            "401":
+               description: غير مصرح بالوصول
+
+   # Discount Routes
+   /discount:
+      get:
+         tags: [Discounts]
+         summary: جلب الخصومات المتاحة
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: قائمة الخصومات المتاحة
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           discounts:
+                              type: array
+                              items:
+                                 $ref: '#/components/schemas/Discount'
+
+   /discount/apply:
+      post:
+         tags: [Discounts]
+         summary: تطبيق خصم على طلب
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required:
+                        - code
+                        - orderAmount
+                     properties:
+                        code:
+                           type: string
+                           example: "SAVE20"
+                        orderAmount:
+                           type: number
+                           minimum: 1
+                           example: 100
+         responses:
+            "200":
+               description: تم تطبيق الخصم بنجاح
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           discount:
+                              type: object
+                              properties:
+                                 code:
+                                    type: string
+                                 name:
+                                    type: string
+                                 discountAmount:
+                                    type: number
+                                 originalAmount:
+                                    type: number
+                                 finalAmount:
+                                    type: number
+            "400":
+               description: كود الخصم غير صالح أو شروط الخصم غير مستوفاة
+            "404":
+               description: كود الخصم غير موجود
+
+   /discount/admin/all:
+      get:
+         tags: [Discounts, Admin]
+         summary: جلب جميع الخصومات (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: قائمة جميع الخصومات
+            "403":
+               description: غير مصرح لك بالوصول
+
+   /discount/admin/create:
+      post:
+         tags: [Discounts, Admin]
+         summary: إنشاء خصم جديد (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: '#/components/schemas/DiscountInput'
+         responses:
+            "201":
+               description: تم إنشاء الخصم بنجاح
+            "400":
+               description: كود الخصم مستخدم بالفعل
+            "403":
+               description: غير مصرح لك بالوصول
+
+   /discount/admin/{id}:
+      put:
+         tags: [Discounts, Admin]
+         summary: تحديث خصم (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                 type: string
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: '#/components/schemas/DiscountInput'
+         responses:
+            "200":
+               description: تم تحديث الخصم بنجاح
+            "404":
+               description: الخصم غير موجود
+            "403":
+               description: غير مصرح لك بالوصول
+      delete:
+         tags: [Discounts, Admin]
+         summary: حذف خصم (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تم حذف الخصم بنجاح
+            "404":
+               description: الخصم غير موجود
+            "403":
+               description: غير مصرح لك بالوصول
+
+   /discount/admin/{id}/toggle:
+      patch:
+         tags: [Discounts, Admin]
+         summary: تفعيل/إلغاء تفعيل خصم (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: تم تغيير حالة الخصم بنجاح
+            "404":
+               description: الخصم غير موجود
+            "403":
+               description: غير مصرح لك بالوصول
+
+   # Offers Routes
+   /offers:
+      get:
+         tags: [Offers]
+         summary: جلب العروض المتاحة
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: قائمة العروض المتاحة
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           offers:
+                              type: array
+                              items:
+                                 $ref: '#/components/schemas/Offer'
+
+   /offers/product/{productId}:
+      get:
+         tags: [Offers]
+         summary: جلب عروض منتج معين
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: productId
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: عروض المنتج
+            "404":
+               description: المنتج غير موجود
+
+   /offers/category/{categoryId}:
+      get:
+         tags: [Offers]
+         summary: جلب عروض فئة معينة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: categoryId
+              in: path
+              required: true
+              schema:
+                 type: string
+         responses:
+            "200":
+               description: عروض الفئة
+
+   /offers/calculate-price:
+      post:
+         tags: [Offers]
+         summary: حساب السعر مع الخصم
+         security:
+            - bearerAuth: []
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     type: object
+                     required:
+                        - productId
+                     properties:
+                        productId:
+                           type: string
+                        discountCode:
+                           type: string
+         responses:
+            "200":
+               description: السعر المحسوب مع الخصم
+            "404":
+               description: المنتج غير موجود
+
+   # Admin Routes
+   /admin/dashboard/stats:
+      get:
+         tags: [Admin]
+         summary: إحصائيات لوحة التحكم (للمدراء فقط)
+         security:
+            - bearerAuth: []
+         responses:
+            "200":
+               description: إحصائيات النظام
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           stats:
+                              type: object
+                              properties:
+                                 totalOrders:
+                                    type: integer
+                                 totalUsers:
+                                    type: integer
+                                 totalProducts:
+                                    type: integer
+                                 pendingOrders:
+                                    type: integer
+                                 totalRevenue:
+                                    type: number
+            "403":
+               description: غير مصرح لك بالوصول
+
+   # Health Check
+   /health:
+      get:
+         tags: [System]
+         summary: فحص حالة النظام
+         responses:
+            "200":
+               description: النظام يعمل بشكل طبيعي
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           status:
+                              type: string
+                              example: "healthy"
+                           message:
+                              type: string
+                              example: "Backend API is up and running"
+                           timestamp:
+                              type: string
+                              format: date-time
+                           environment:
+                              type: string
+                              example: "WSL"
+
+   # Accounting Routes
+   /accounting/dashboard:
+      get:
+         tags: [Accounting]
+         summary: لوحة تحكم المحاسبة - ملخص شامل
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: period
+              in: query
+              schema:
+                 type: string
+                 enum: [daily, monthly, yearly]
+                 default: monthly
+         responses:
+            "200":
+               description: بيانات لوحة تحكم المحاسبة
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           dashboard:
+                              type: object
+                              properties:
+                                 monthlyStats:
+                                    type: object
+                                    properties:
+                                       totalRevenue:
+                                          type: number
+                                       totalOrders:
+                                          type: integer
+                                       totalDiscounts:
+                                          type: number
+                                       avgOrderValue:
+                                          type: number
+                                 recentOrders:
+                                    type: array
+                                    items:
+                                       $ref: '#/components/schemas/Order'
+                                 topProducts:
+                                    type: array
+                                    items:
+                                       type: object
+                                       properties:
+                                          productName:
+                                             type: string
+                                          totalSold:
+                                             type: integer
+                                          totalRevenue:
+                                             type: number
+            "403":
+               description: غير مصرح لك بالوصول - صلاحيات المحاسبة مطلوبة
+
+   /accounting/sales/stats:
+      get:
+         tags: [Accounting]
+         summary: إحصائيات المبيعات العامة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: startDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+              description: تاريخ البداية
+            - name: endDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+              description: تاريخ النهاية
+            - name: period
+              in: query
+              schema:
+                 type: string
+                 enum: [daily, monthly, yearly]
+                 default: daily
+              description: فترة التجميع
+         responses:
+            "200":
+               description: إحصائيات المبيعات
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           period:
+                              type: string
+                           dateRange:
+                              type: object
+                              properties:
+                                 startDate:
+                                    type: string
+                                 endDate:
+                                    type: string
+                           salesByPeriod:
+                              type: array
+                              items:
+                                 type: object
+                                 properties:
+                                    _id:
+                                       type: string
+                                    totalSales:
+                                       type: number
+                                    totalOrders:
+                                       type: integer
+                                    totalDiscount:
+                                       type: number
+                                    avgOrderValue:
+                                       type: number
+                           totalStats:
+                              type: object
+                              properties:
+                                 totalRevenue:
+                                    type: number
+                                 totalOrders:
+                                    type: integer
+                                 totalDiscounts:
+                                    type: number
+                                 avgOrderValue:
+                                    type: number
+
+   /accounting/sales/products:
+      get:
+         tags: [Accounting]
+         summary: تقرير المبيعات حسب المنتجات
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: startDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: endDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: limit
+              in: query
+              schema:
+                 type: integer
+                 default: 20
+              description: عدد المنتجات المراد عرضها
+         responses:
+            "200":
+               description: تقرير مبيعات المنتجات
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           productSales:
+                              type: array
+                              items:
+                                 type: object
+                                 properties:
+                                    productName:
+                                       type: string
+                                    category:
+                                       type: string
+                                    totalQuantitySold:
+                                       type: integer
+                                    totalRevenue:
+                                       type: number
+                                    totalOrders:
+                                       type: integer
+                                    avgPrice:
+                                       type: number
+
+   /accounting/sales/categories:
+      get:
+         tags: [Accounting]
+         summary: تقرير الإيرادات حسب الفئات
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: startDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: endDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+         responses:
+            "200":
+               description: تقرير مبيعات الفئات
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           categorySales:
+                              type: array
+                              items:
+                                 type: object
+                                 properties:
+                                    categoryName:
+                                       type: string
+                                    totalQuantitySold:
+                                       type: integer
+                                    totalRevenue:
+                                       type: number
+                                    totalOrders:
+                                       type: integer
+                                    avgPrice:
+                                       type: number
+
+   /accounting/discounts/usage:
+      get:
+         tags: [Accounting]
+         summary: تقرير الخصومات المستخدمة
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: startDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: endDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+         responses:
+            "200":
+               description: تقرير استخدام الخصومات
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           discountUsage:
+                              type: array
+                              items:
+                                 type: object
+                                 properties:
+                                    discountCode:
+                                       type: string
+                                    usageCount:
+                                       type: integer
+                                    totalDiscountAmount:
+                                       type: number
+                                    totalOrderValue:
+                                       type: number
+                                    avgDiscountAmount:
+                                       type: number
+                                    discountName:
+                                       type: string
+                                    discountType:
+                                       type: string
+                           stats:
+                              type: object
+                              properties:
+                                 totalOrdersWithDiscount:
+                                    type: integer
+                                 totalOrdersWithoutDiscount:
+                                    type: integer
+                                 totalDiscountAmount:
+                                    type: number
+                                 totalRevenue:
+                                    type: number
+
+   /accounting/customers:
+      get:
+         tags: [Accounting]
+         summary: تقرير العملاء وإحصائياتهم
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: startDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: endDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: limit
+              in: query
+              schema:
+                 type: integer
+                 default: 50
+         responses:
+            "200":
+               description: تقرير العملاء
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           customers:
+                              type: array
+                              items:
+                                 type: object
+                                 properties:
+                                    customerName:
+                                       type: string
+                                    customerEmail:
+                                       type: string
+                                    customerPhone:
+                                       type: string
+                                    totalOrders:
+                                       type: integer
+                                    totalSpent:
+                                       type: number
+                                    avgOrderValue:
+                                       type: number
+                                    totalDiscountUsed:
+                                       type: number
+                                    firstOrder:
+                                       type: string
+                                       format: date-time
+                                    lastOrder:
+                                       type: string
+                                       format: date-time
+                                    customerValue:
+                                       type: string
+                                       enum: [VIP, Gold, Silver, Bronze]
+                           generalStats:
+                              type: object
+                              properties:
+                                 totalCustomers:
+                                    type: integer
+                                 totalAdmins:
+                                    type: integer
+                                 totalAccountants:
+                                    type: integer
+                                 totalRegularUsers:
+                                    type: integer
+
+   /accounting/profit-loss:
+      get:
+         tags: [Accounting]
+         summary: تقرير الأرباح والخسائر
+         security:
+            - bearerAuth: []
+         parameters:
+            - name: startDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+            - name: endDate
+              in: query
+              schema:
+                 type: string
+                 format: date
+         responses:
+            "200":
+               description: تقرير الأرباح والخسائر
+               content:
+                  application/json:
+                     schema:
+                        type: object
+                        properties:
+                           success:
+                              type: boolean
+                           report:
+                              type: object
+                              properties:
+                                 totalRevenue:
+                                    type: number
+                                 estimatedCost:
+                                    type: number
+                                 grossProfit:
+                                    type: number
+                                 totalDiscounts:
+                                    type: number
+                                 netProfit:
+                                    type: number
+                                 profitMargin:
+                                    type: number
+                                 totalOrders:
+                                    type: integer
+                           note:
+                              type: string
+                              description: ملاحظة حول طريقة حساب التكلفة
+
+security:
+   - bearerAuth: []
+
+components:
+   securitySchemes:
+      bearerAuth:
+         type: http
+         scheme: bearer
+         bearerFormat: JWT
+
+   schemas:
+      User:
+         type: object
+         properties:
+            _id:
+               type: string
+            username:
+               type: string
+            email:
+               type: string
+            phone:
+               type: string
+            address:
+               type: string
+            location:
+               type: object
+               properties:
+                  lat:
+                     type: number
+                  lng:
+                     type: number
+            addresses:
+               type: array
+               items:
+                  type: object
+                  properties:
+                     label:
+                        type: string
+                     address:
+                        type: string
+                     location:
+                        type: object
+                        properties:
+                           lat:
+                              type: number
+                           lng:
+                              type: number
+                     details:
+                        type: string
+            role:
+               type: string
+               enum: [user, admin, pharmacist, delivery, accountant]
+            isVerified:
+               type: boolean
+               description: حالة تحقق الحساب
+            profileImage:
+               type: string
+            favorites:
+               type: array
+               items:
+                  type: string
+            cart:
+               type: array
+               items:
+                  type: object
+                  properties:
+                     productId:
+                        type: string
+                     quantity:
+                        type: integer
+            orderHistory:
+               type: array
+               items:
+                  type: string
+            notificationToken:
+               type: string
+            deviceInfo:
+               type: object
+            lastLogin:
+               type: string
+               format: date-time
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      UserInput:
+         type: object
+         required: [username, email, password, phone]
+         properties:
+            username:
+               type: string
+               example: "ahmad123"
+            email:
+               type: string
+               format: email
+               example: "ahmad@example.com"
+            password:
+               type: string
+               minLength: 6
+               example: "password123"
+            phone:
+               type: string
+               example: "0501234567"
+            address:
+               type: string
+               example: "الرياض، المملكة العربية السعودية"
+            location:
+               type: object
+               properties:
+                  lat:
+                     type: number
+                  lng:
+                     type: number
+            addresses:
+               type: array
+               items:
+                  type: object
+                  properties:
+                     label:
+                        type: string
+                     address:
+                        type: string
+                     location:
+                        type: object
+                        properties:
+                           lat:
+                              type: number
+                           lng:
+                              type: number
+                     details:
+                        type: string
+            role:
+               type: string
+               enum: [user, admin, pharmacist, delivery, accountant]
+               default: user
+
+      Product:
+         type: object
+         properties:
+            _id:
+               type: string
+            name:
+               type: string
+            description:
+               type: string
+            price:
+               type: number
+            image:
+               type: string
+            category:
+               type: string
+            stock:
+               type: integer
+            isActive:
+               type: boolean
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      ProductInput:
+         type: object
+         required: [name, price, category]
+         properties:
+            name:
+               type: string
+               example: "أسبرين 500 مجم"
+            description:
+               type: string
+               example: "مسكن للألم ومضاد للالتهابات"
+            price:
+               type: number
+               example: 25.50
+            image:
+               type: string
+               example: "https://example.com/aspirin.jpg"
+            category:
+               type: string
+               example: "60f1b2a3c4d5e6f7g8h9i0j1"
+            stock:
+               type: integer
+               example: 100
+            isActive:
+               type: boolean
+               default: true
+
+      Category:
+         type: object
+         properties:
+            _id:
+               type: string
+            name:
+               type: string
+            description:
+               type: string
+            image:
+               type: string
+            isActive:
+               type: boolean
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      CategoryInput:
+         type: object
+         required: [name]
+         properties:
+            name:
+               type: string
+               example: "مسكنات الألم"
+            description:
+               type: string
+               example: "أدوية لتسكين الألم والالتهابات"
+            image:
+               type: string
+               example: "https://example.com/category.jpg"
+            isActive:
+               type: boolean
+               default: true
+
+      Cart:
+         type: object
+         properties:
+            _id:
+               type: string
+            user:
+               type: string
+            items:
+               type: array
+               items:
+                  type: object
+                  properties:
+                     productId:
+                        type: string
+                     quantity:
+                        type: integer
+                     price:
+                        type: number
+                     product:
+                        $ref: '#/components/schemas/Product'
+            totalAmount:
+               type: number
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      CartItem:
+         type: object
+         required: [productId, quantity]
+         properties:
+            productId:
+               type: string
+               example: "60f1b2a3c4d5e6f7g8h9i0j1"
+            quantity:
+               type: integer
+               minimum: 1
+               example: 2
+            price:
+               type: number
+               example: 25.50
+
+      Order:
+         type: object
+         properties:
+            _id:
+               type: string
+            user:
+               type: string
+            items:
+               type: array
+               items:
+                  type: object
+                  properties:
+                     productId:
+                        type: string
+                     quantity:
+                        type: integer
+                     price:
+                        type: number
+                     product:
+                        $ref: '#/components/schemas/Product'
+            totalAmount:
+               type: number
+            shippingAddress:
+               type: object
+               properties:
+                  street:
+                     type: string
+                  city:
+                     type: string
+                  postalCode:
+                     type: string
+            paymentMethod:
+               type: string
+               enum: [cash, card, stcpay]
+            paymentStatus:
+               type: string
+               enum: [pending, paid, failed]
+            orderStatus:
+               type: string
+               enum: [processing, shipped, delivered, cancelled]
+            discountCode:
+               type: string
+            discountAmount:
+               type: number
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      OrderInput:
+         type: object
+         required: [items, paymentMethod, shippingAddress]
+         properties:
+            items:
+               type: array
+               items:
+                  type: object
+                  properties:
+                     productId:
+                        type: string
+                     quantity:
+                        type: integer
+            paymentMethod:
+               type: string
+               enum: [cash, card, stcpay]
+            shippingAddress:
+               type: object
+               required: [street, city, postalCode]
+               properties:
+                  street:
+                     type: string
+                  city:
+                     type: string
+                  postalCode:
+                     type: string
+            discountCode:
+               type: string
+
+      Payment:
+         type: object
+         properties:
+            _id:
+               type: string
+            orderId:
+               type: string
+            userId:
+               type: string
+            amount:
+               type: number
+            currency:
+               type: string
+               enum: [SAR, USD, EUR]
+            status:
+               type: string
+               enum: [pending, processing, completed, failed, cancelled, refunded]
+            paymentMethod:
+               type: string
+               enum: [cash, card, stcpay, creditcard]
+            paymentIntentId:
+               type: string
+            paymentMethodId:
+               type: string
+            transactionId:
+               type: string
+            gatewayResponse:
+               type: object
+            failureReason:
+               type: string
+            refundAmount:
+               type: number
+            refundReason:
+               type: string
+            metadata:
+               type: object
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      PaymentInput:
+         type: object
+         required: [orderId, amount, paymentMethod]
+         properties:
+            orderId:
+               type: string
+            amount:
+               type: number
+            currency:
+               type: string
+               enum: [SAR, USD, EUR]
+               default: SAR
+            paymentMethod:
+               type: string
+               enum: [cash, card, stcpay, creditcard]
+            metadata:
+               type: object
+
+      Discount:
+         type: object
+         properties:
+            _id:
+               type: string
+            name:
+               type: string
+            description:
+               type: string
+            code:
+               type: string
+            discountType:
+               type: string
+               enum: [percentage, fixed]
+            discountValue:
+               type: number
+            minAmount:
+               type: number
+            maxDiscount:
+               type: number
+            startDate:
+               type: string
+               format: date-time
+            endDate:
+               type: string
+               format: date-time
+            isActive:
+               type: boolean
+            applicableProducts:
+               type: array
+               items:
+                  type: string
+            applicableCategories:
+               type: array
+               items:
+                  type: string
+            createdAt:
+               type: string
+               format: date-time
+            updatedAt:
+               type: string
+               format: date-time
+
+      DiscountInput:
+         type: object
+         required: [name, discountType, discountValue, startDate, endDate]
+         properties:
+            name:
+               type: string
+               example: "خصم الصيف"
+            description:
+               type: string
+               example: "خصم 20% على جميع المنتجات"
+            code:
+               type: string
+               example: "SUMMER20"
+            discountType:
+               type: string
+               enum: [percentage, fixed]
+               example: "percentage"
+            discountValue:
+               type: number
+               example: 20
+            minAmount:
+               type: number
+               example: 100
+            maxDiscount:
+               type: number
+               example: 50
+            startDate:
+               type: string
+               format: date-time
+               example: "2025-07-01T00:00:00.000Z"
+            endDate:
+               type: string
+               format: date-time
+               example: "2025-07-31T23:59:59.000Z"
+            isActive:
+               type: boolean
+               default: true
+            applicableProducts:
+               type: array
+               items:
+                  type: string
+               example: ["60f1b2a3c4d5e6f7g8h9i0j1"]
+            applicableCategories:
+               type: array
+               items:
+                  type: string
+               example: ["60f1b2a3c4d5e6f7g8h9i0j2"]
+
+      Offer:
+         type: object
+         properties:
+            _id:
+               type: string
+            title:
+               type: string
+            description:
+               type: string
+            originalPrice:
+               type: number
+            discountPrice:
+               type: number
+            discountPercentage:
+               type: number
+            savings:
+               type: number
+            type:
+               type: string
+               enum: [product, category, general]
+            product:
+               $ref: '#/components/schemas/Product'
+            category:
+               $ref: '#/components/schemas/Category'
+            discount:
+               type: object
+               properties:
+                  _id:
+                     type: string
+                  code:
+                     type: string
+                  type:
+                     type: string
+                  value:
+                     type: number
+                  startDate:
+                     type: string
+                     format: date-time
+                  endDate:
+                     type: string
+                     format: date-time
+
+      OTP:
+         type: object
+         properties:
+            _id:
+               type: string
+            email:
+               type: string
+            phone:
+               type: string
+            code:
+               type: string
+            type:
+               type: string
+               enum: [register, reset-password]
+            expiresAt:
+               type: string
+               format: date-time
+            isUsed:
+               type: boolean
+            userData:
+               type: object
+            createdAt:
+               type: string
+               format: date-time
+
+      Error:
+         type: object
+         properties:
+            message:
+               type: string
+            error:
+               type: string
+            statusCode:
+               type: integer
+            timestamp:
+               type: string
+               format: date-time
+
+      Success:
+         type: object
+         properties:
+            success:
+               type: boolean
+            message:
+               type: string
+            data:
+               type: object
